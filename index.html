@@ -228,6 +228,7 @@
         <div class="control-group">
             <label for="geojson-file">Load GeoJSON File:</label>
             <input type="file" id="geojson-file" accept=".geojson,.json">
+            <button class="btn btn-secondary" id="load-example" style="font-size: 11px; margin-top: 5px;">Load example4_3d.geojson</button>
         </div>
 
         <div class="toggle-switch">
@@ -318,6 +319,20 @@
         });
 
         let currentData = null;
+
+        document.getElementById('load-example').addEventListener('click', function () {
+            const exampleFile = 'output/example4_3d.geojson';
+            fetch(exampleFile)
+                .then(response => response.json())
+                .then(geojson => {
+                    loadGeoJSON(geojson);
+                    showStatus('Example GeoJSON loaded successfully!', 'success');
+                })
+                .catch(error => {
+                    console.error('Error loading example GeoJSON:', error);
+                    showStatus('Failed to load example GeoJSON', 'error');
+                });
+        });
 
         // Load GeoJSON file
         document.getElementById('geojson-file').addEventListener('change', function (e) {
