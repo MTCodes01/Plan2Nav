@@ -258,19 +258,22 @@
                 version: 8,
                 sources: {
                     'osm': {
-                        type: 'raster',
-                        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-                        tileSize: 256,
-                        attribution: '© OpenStreetMap contributors'
+                        'type': 'raster',
+                        'tiles': [
+                            'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
+                        ],
+                        'tileSize': 256
                     }
                 },
                 layers: [{
-                    id: 'osm',
-                    type: 'raster',
-                    source: 'osm'
+                    'id': 'osm-layer',
+                    'type': 'raster',
+                    'source': 'osm'
                 }]
             },
-            center: [0, 0],
+            center: [76.819491, 8.691440],
             zoom: 18,
             pitch: 60,
             bearing: 0,
@@ -279,6 +282,40 @@
 
         // Add navigation controls
         map.addControl(new maplibregl.NavigationControl(), 'top-left');
+
+        map.on('load', function () {
+            // Load floor plan overlay if available
+            fetch('output/overlay_config.json')
+                .then(response => {
+                    if (!response.ok) throw new Error("No overlay config found");
+                    return response.json();
+                })
+                .then(config => {
+                    console.log("Loading overlay image:", config);
+
+                    map.addSource('floorplan-image', {
+                        'type': 'image',
+                        'url': config.image_url,
+                        'coordinates': config.coordinates
+                    });
+
+                    map.addLayer({
+                        'id': 'floorplan-image-layer',
+                        'type': 'raster',
+                        'source': 'floorplan-image',
+                        'paint': {
+                            'raster-opacity': 1.0,
+                            'raster-fade-duration': 0
+                        }
+                    });
+
+                    // Move to bottom? No, on top of OSM (which is in style) is fine.
+                    // GeoJSON layers will be added on top of this.
+                })
+                .catch(err => {
+                    console.log("Overlay config not loaded:", err);
+                });
+        });
 
         let currentData = null;
 

@@ -70,8 +70,8 @@ room_properties:
 # Coordinate Transformation Settings
 coordinate_transform:
   # Center point in geographic coordinates (latitude, longitude)
-  center_lat: 0.0
-  center_lon: 0.0
+  center_lat: 8.691440
+  center_lon: 76.819491
   # Scale factor: meters per pixel
   meters_per_pixel: 0.1
   # Rotation angle in degrees (counterclockwise)

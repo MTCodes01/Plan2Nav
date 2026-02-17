@@ -19,7 +19,6 @@ from shapely.ops import unary_union
 logger = logging.getLogger(__name__)
 
 
-from text_detector import TextDetector
 
 @dataclass
 class Room:
@@ -97,8 +96,8 @@ class RoomDetector:
         self._hough_min_line_length = self.wall_config.get('hough_min_line_length', 30)
         self._hough_max_line_gap = self.wall_config.get('hough_max_line_gap', 10)
         
-        # Initialize Text Detector
-        self.text_detector = TextDetector(config)
+        
+        # Text Detector removed
         
         
         # Wall generation parameters
@@ -190,11 +189,8 @@ class RoomDetector:
         """
         self._binary_image = binary_image
         
-        # Run text detection if original image is provided
+        # Text detection removed
         detected_texts = []
-        if original_image is not None and self.text_detector.enabled:
-            logger.info("Running text detection on original image...")
-            detected_texts = self.text_detector.detect_text(original_image)
         
         
         # Thicken walls to ensure they create complete barriers between rooms
@@ -272,21 +268,14 @@ class RoomDetector:
             if self._generate_walls:
                 room.wall_polygon = self._generate_wall_polygon(room.simplified_polygon)
             
-            # Assign room label from text
-            room_label = self._match_text_to_room(room, detected_texts)
-            
-            if room_label:
-                room.room_type = room_label.lower().replace(" ", "_")
-                logger.debug(f"Matched room {idx} to label '{room_label}'")
-            else:
-                # If no text label, verify if it's an outer space
-                if is_boundary:
-                    if area > (image_w * image_h * 0.7): # If it covers > 70% of image and touches boundary
-                         logger.debug(f"Skipping room {idx} (Background/Outer space)")
-                         continue
-                
-                # Use heuristic classification
-                room.room_type = self._classify_room_by_area(area)
+            # Filter out background/outer space if no text label confirms it's a room
+            if is_boundary:
+                if area > (image_h * image_w * 0.5): # Lowered threshold slightly to 50% to be safe
+                     logger.debug(f"Skipping room {idx} (Background/Outer space)")
+                     continue
+
+            # Heuristic classification based on area
+            room.room_type = self._classify_room_by_area(area)
             
             self.detected_rooms.append(room)
             
@@ -298,56 +287,6 @@ class RoomDetector:
         logger.info(f"Detected {len(self.detected_rooms)} valid rooms")
         return self.detected_rooms
     
-    def _match_text_to_room(self, room: Room, detected_texts: List[Any]) -> Optional[str]:
-        """
-        Check if any detected text falls inside the room contour.
-        """
-        if not detected_texts:
-            return None
-            
-        # Check containment of text centroids
-        contained_texts = []
-        for dt in detected_texts:
-            # pointPolygonTest returns > 0 if inside, < 0 if outside, 0 if on edge
-            dist = cv2.pointPolygonTest(room.contour, dt.centroid, False)
-            if dist > 0:
-                contained_texts.append(dt)
-        
-        if not contained_texts:
-            return None
-            
-        # Normalize and filter texts to find room labels
-        room_keywords = ['bedroom', 'kitchen', 'bath', 'living', 'dining', 'hall', 
-                        'foyer', 'closet', 'terrace', 'balcony', 'garage', 'room']
-        
-        best_text = None
-        min_dist = float('inf')
-        rcx, rcy = room.centroid
-        
-        for dt in contained_texts:
-            # Normalize text: remove extra spaces, convert to lowercase
-            text_normalized = ' '.join(dt.text.split()).lower()
-            
-            # Skip dimension text (e.g., "10'1\" x 11'1\"")
-            if any(char in text_normalized for char in ["'", '"', 'x', '×']) and \
-               any(char.isdigit() for char in text_normalized):
-                continue
-            
-            # Check if text contains room keywords
-            is_room_label = any(keyword in text_normalized for keyword in room_keywords)
-            
-            if is_room_label:
-                # Prioritize exact keyword matches
-                return dt.text
-            
-            # Track closest text as fallback
-            tcx, tcy = dt.centroid
-            dist = (tcx - rcx)**2 + (tcy - rcy)**2
-            if dist < min_dist:
-                min_dist = dist
-                best_text = dt.text
-                
-        return best_text
 
     def _classify_room_by_area(self, area: float) -> str:
         """

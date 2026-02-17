@@ -115,6 +115,31 @@ class GeoJSONConverter:
         
         return (self.center_lon + delta_lon, self.center_lat + delta_lat)
 
+    def get_image_bounds(self, width: int, height: int) -> List[List[float]]:
+        """
+        Calculate the geographic bounds of the image for map overlay.
+        
+        Returns:
+            List of 4 coordinates [lon, lat] in order:
+            Top-Left, Top-Right, Bottom-Right, Bottom-Left
+            This is the format expected by MapLibre/Mapbox image source.
+        """
+        # Top-Left (0, 0)
+        tl = self._pixel_to_latlon(0, 0, height)
+        # Top-Right (width, 0)
+        tr = self._pixel_to_latlon(width, 0, height)
+        # Bottom-Right (width, height)
+        br = self._pixel_to_latlon(width, height, height)
+        # Bottom-Left (0, height)
+        bl = self._pixel_to_latlon(0, height, height)
+        
+        return [
+            [round(tl[0], self.precision), round(tl[1], self.precision)],
+            [round(tr[0], self.precision), round(tr[1], self.precision)],
+            [round(br[0], self.precision), round(br[1], self.precision)],
+            [round(bl[0], self.precision), round(bl[1], self.precision)]
+        ]
+
     def convert_and_save(self, rooms: List[Any], image_height: int, output_path: Path) -> Dict[str, Any]:
         """
         Convert detection results to GeoJSON and save to file.

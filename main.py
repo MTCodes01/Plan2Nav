@@ -19,6 +19,8 @@ from typing import List, Dict, Any
 import yaml
 from tqdm import tqdm
 
+import json
+
 # Import our custom modules
 from floorplan_processor import FloorPlanProcessor
 from room_detector import RoomDetector
@@ -147,7 +149,33 @@ def process_floor_plan(
             image_height,
             output_path
         )
-        
+
+        # Save overlay configuration for viewer
+        try:
+             # Calculate image bounds (Top-Left, Top-Right, Bottom-Right, Bottom-Left)
+            image_h, image_w = processor.original_image.shape[:2]
+            overlay_bounds = converter.get_image_bounds(image_w, image_h)
+            
+            # Use relative path suitable for viewer.html in root
+            # image_path is absolute or relative to CWD (d:\VScode...)
+            # We want path relative to viewer.html location (root)
+            # If running from root, input/example.png is correct.
+            # config.json acts as a single source of truth for the viewer.
+            
+            overlay_config = {
+                "image_url": str(image_path.as_posix()), 
+                "coordinates": overlay_bounds
+            }
+            
+            overlay_config_path = output_dir / "overlay_config.json"
+            with open(overlay_config_path, 'w') as f:
+                json.dump(overlay_config, f, indent=2)
+                
+            logger.info(f"Saved overlay config to {overlay_config_path}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to save overlay config: {e}")
+            
         # Step 4: Generate debug images if enabled
         if generate_debug and config.get('output', {}).get('generate_debug_images', True):
             debug_dir = output_dir / 'debug'
