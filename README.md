@@ -53,6 +53,12 @@ python main.py --debug
 
 # Disable debug image generation
 python main.py --no-debug-images
+
+# Architectural floor plan
+python main.py --config config_architectural.yaml --input input/ --output output/ --debug
+
+# Simple floor plan
+python main.py --config config.yaml --input input/ --output output/ --debug
 ```
 
 ### Command-Line Options
@@ -292,4 +298,4 @@ For issues or questions, please check:
 
 ---
 
-**Made with ❤️ for the mapping community**
+**Made for my mini project**
