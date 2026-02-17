@@ -1,0 +1,83 @@
+# Floor Plan to 3D GeoJSON Converter Configuration
+
+# Image Processing Settings
+image_processing:
+  # Threshold value for binary conversion (0-255)
+  threshold: 127
+  # Use adaptive thresholding instead of global
+  adaptive_threshold: true
+  # Gaussian blur kernel size for denoising (must be odd)
+  blur_kernel_size: 5
+  # Morphological operation kernel size
+  morph_kernel_size: 3
+
+# Wall Detection Settings
+wall_detection:
+  # Minimum wall thickness in pixels
+  min_thickness: 3
+  # Maximum wall thickness in pixels  
+  max_thickness: 30
+  # Hough transform parameters
+  hough_threshold: 50
+  hough_min_line_length: 30
+  hough_max_line_gap: 10
+
+# Room Detection Settings
+room_detection:
+  # Minimum room area in pixels squared
+  min_area: 1000
+  # Maximum room area in pixels squared (0 = no limit)
+  max_area: 0
+  # Contour approximation epsilon factor
+  contour_epsilon: 0.02
+  # Whether to detect nested rooms (rooms inside rooms)
+  detect_nested: false
+
+# Room Properties
+room_properties:
+  # Default ceiling height in meters
+  default_height: 3.0
+  # Default floor level in meters
+  default_base_height: 0.0
+  # Color palette for different room types
+  colors:
+    room: "#E8E8E8"
+    bedroom: "#FFE4B5"
+    living_room: "#98FB98"
+    kitchen: "#FFB6C1"
+    bathroom: "#ADD8E6"
+    hallway: "#D3D3D3"
+    closet: "#DEB887"
+    office: "#F0E68C"
+    dining: "#FFDAB9"
+    unknown: "#C0C0C0"
+
+# Coordinate Transformation Settings
+coordinate_transform:
+  # Center point in geographic coordinates (latitude, longitude)
+  center_lat: 0.0
+  center_lon: 0.0
+  # Scale factor: meters per pixel
+  meters_per_pixel: 0.1
+  # Rotation angle in degrees (counterclockwise)
+  rotation_degrees: 0.0
+
+# Output Settings
+output:
+  # Pretty print JSON output
+  pretty_print: true
+  # Decimal precision for coordinates
+  coordinate_precision: 8
+  # Generate debug images
+  generate_debug_images: true
+  # GeoJSON validation
+  validate_output: true
+
+# Logging Settings
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  level: INFO
+  # Log to file
+  log_to_file: false
+  # Log file path (relative to output folder)
+  log_file: "processing.log"

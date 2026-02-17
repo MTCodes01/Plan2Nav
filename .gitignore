@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment
+.env
+.venv
+env/
+venv/
+ENV/
+
+# VSCode
+.vscode/
+
+# Project Specific
+input/
+output/
+debug_*/
+*.log
+traceback.txt
+test_output.txt
+sample_input/

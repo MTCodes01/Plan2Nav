@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Floor Plan Viewer - MapLibre GL JS</title>
+
+    <!-- MapLibre GL JS -->
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+        .controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            z-index: 1;
+            min-width: 280px;
+        }
+
+        .controls h2 {
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .control-group input[type="file"] {
+            width: 100%;
+            padding: 8px;
+            border: 2px dashed #667eea;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .control-group input[type="file"]:hover {
+            border-color: #764ba2;
+            background: #f8f9ff;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .info-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            z-index: 1;
+            max-width: 300px;
+            display: none;
+        }
+
+        .info-panel.active {
+            display: block;
+        }
+
+        .info-panel h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #333;
+        }
+
+        .info-panel p {
+            margin: 5px 0;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .info-panel .room-color {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            margin-right: 8px;
+            vertical-align: middle;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .status {
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .toggle-switch input[type="checkbox"] {
+            width: 50px;
+            height: 26px;
+            position: relative;
+            appearance: none;
+            background: #ccc;
+            border-radius: 13px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .toggle-switch input[type="checkbox"]:checked {
+            background: #667eea;
+        }
+
+        .toggle-switch input[type="checkbox"]::before {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: white;
+            top: 3px;
+            left: 3px;
+            transition: transform 0.3s;
+        }
+
+        .toggle-switch input[type="checkbox"]:checked::before {
+            transform: translateX(24px);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+
+    <div class="controls">
+        <h2>🏠 Floor Plan Viewer</h2>
+
+        <div id="status"></div>
+
+        <div class="control-group">
+            <label for="geojson-file">Load GeoJSON File:</label>
+            <input type="file" id="geojson-file" accept=".geojson,.json">
+        </div>
+
+        <div class="toggle-switch">
+            <label>3D View</label>
+            <input type="checkbox" id="toggle-3d" checked>
+        </div>
+
+        <button class="btn btn-primary" id="reset-view">Reset View</button>
+        <button class="btn btn-secondary" id="clear-data">Clear Data</button>
+
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e0e0e0;">
+            <p style="font-size: 11px; color: #999; text-align: center;">
+                Click on a room to see details
+            </p>
+        </div>
+    </div>
+
+    <div class="info-panel" id="info-panel">
+        <h3>Room Information</h3>
+        <div id="room-info"></div>
+    </div>
+
+    <script>
+        // Initialize the map
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: {
+                version: 8,
+                sources: {
+                    'osm': {
+                        type: 'raster',
+                        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                        tileSize: 256,
+                        attribution: '© OpenStreetMap contributors'
+                    }
+                },
+                layers: [{
+                    id: 'osm',
+                    type: 'raster',
+                    source: 'osm'
+                }]
+            },
+            center: [0, 0],
+            zoom: 18,
+            pitch: 60,
+            bearing: 0,
+            antialias: true
+        });
+
+        // Add navigation controls
+        map.addControl(new maplibregl.NavigationControl(), 'top-left');
+
+        let currentData = null;
+
+        // Load GeoJSON file
+        document.getElementById('geojson-file').addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (event) {
+                try {
+                    const geojson = JSON.parse(event.target.result);
+                    loadGeoJSON(geojson);
+                    showStatus('GeoJSON loaded successfully!', 'success');
+                } catch (error) {
+                    showStatus('Error loading GeoJSON: ' + error.message, 'error');
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        function loadGeoJSON(geojson) {
+            currentData = geojson;
+
+            // Remove existing source and layers if they exist
+            if (map.getSource('floorplan')) {
+                if (map.getLayer('floorplan-3d')) map.removeLayer('floorplan-3d');
+                if (map.getLayer('floorplan-2d')) map.removeLayer('floorplan-2d');
+                if (map.getLayer('floorplan-outline')) map.removeLayer('floorplan-outline');
+                map.removeSource('floorplan');
+            }
+
+            // Add source
+            map.addSource('floorplan', {
+                type: 'geojson',
+                data: geojson
+            });
+
+            // Add 3D wall extrusion (thin wall polygons extruded vertically)
+            map.addLayer({
+                id: 'floorplan-walls-3d',
+                type: 'fill-extrusion',
+                source: 'floorplan',
+                paint: {
+                    'fill-extrusion-color': ['get', 'color'],
+                    'fill-extrusion-height': ['get', 'height'],
+                    'fill-extrusion-base': ['get', 'base_height'],
+                    'fill-extrusion-opacity': 0.9
+                },
+                layout: {
+                    visibility: 'visible'
+                }
+            });
+
+            // Add 2D fill layer (hidden by default)
+            map.addLayer({
+                id: 'floorplan-2d',
+                type: 'fill',
+                source: 'floorplan',
+                paint: {
+                    'fill-color': ['get', 'color'],
+                    'fill-opacity': 0.7
+                },
+                layout: {
+                    visibility: 'none'
+                }
+            });
+
+
+            // Calculate bounds and fit map
+            if (geojson.features && geojson.features.length > 0) {
+                const bounds = new maplibregl.LngLatBounds();
+
+                geojson.features.forEach(feature => {
+                    if (feature.geometry.type === 'Polygon') {
+                        feature.geometry.coordinates[0].forEach(coord => {
+                            bounds.extend(coord);
+                        });
+                    }
+                });
+
+                map.fitBounds(bounds, {
+                    padding: 50,
+                    duration: 1000
+                });
+            }
+
+            // Add click event for room info
+            map.on('click', 'floorplan-3d', showRoomInfo);
+            map.on('click', 'floorplan-2d', showRoomInfo);
+
+            // Change cursor on hover
+            map.on('mouseenter', 'floorplan-3d', () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            map.on('mouseleave', 'floorplan-3d', () => {
+                map.getCanvas().style.cursor = '';
+            });
+        }
+
+        function showRoomInfo(e) {
+            const properties = e.features[0].properties;
+            const infoPanel = document.getElementById('info-panel');
+            const roomInfo = document.getElementById('room-info');
+
+            roomInfo.innerHTML = `
+                <p><span class="room-color" style="background-color: ${properties.color}"></span><strong>Type:</strong> ${properties.room_type}</p>
+                <p><strong>Area:</strong> ${properties.area} m²</p>
+                <p><strong>Height:</strong> ${properties.height} m</p>
+                <p><strong>Base Height:</strong> ${properties.base_height} m</p>
+            `;
+
+            infoPanel.classList.add('active');
+        }
+
+        // Toggle 3D/2D view
+        document.getElementById('toggle-3d').addEventListener('change', function (e) {
+            const is3D = e.target.checked;
+
+            if (map.getLayer('floorplan-walls-3d') && map.getLayer('floorplan-2d')) {
+                // In 3D mode: show colored wall outlines only
+                // In 2D mode: show filled 2D view
+                map.setLayoutProperty('floorplan-walls-3d', 'visibility', is3D ? 'visible' : 'none');
+                map.setLayoutProperty('floorplan-2d', 'visibility', is3D ? 'none' : 'visible');
+
+                // Animate pitch
+                map.easeTo({
+                    pitch: is3D ? 60 : 0,
+                    duration: 1000
+                });
+            }
+        });
+
+        // Reset view
+        document.getElementById('reset-view').addEventListener('click', function () {
+            if (currentData && currentData.features && currentData.features.length > 0) {
+                const bounds = new maplibregl.LngLatBounds();
+
+                currentData.features.forEach(feature => {
+                    if (feature.geometry.type === 'Polygon') {
+                        feature.geometry.coordinates[0].forEach(coord => {
+                            bounds.extend(coord);
+                        });
+                    }
+                });
+
+                map.fitBounds(bounds, {
+                    padding: 50,
+                    pitch: 60,
+                    bearing: 0,
+                    duration: 1000
+                });
+            }
+        });
+
+        // Clear data
+        document.getElementById('clear-data').addEventListener('click', function () {
+            if (map.getSource('floorplan')) {
+                if (map.getLayer('floorplan-3d')) map.removeLayer('floorplan-3d');
+                if (map.getLayer('floorplan-2d')) map.removeLayer('floorplan-2d');
+                if (map.getLayer('floorplan-outline')) map.removeLayer('floorplan-outline');
+                map.removeSource('floorplan');
+            }
+
+            document.getElementById('info-panel').classList.remove('active');
+            document.getElementById('geojson-file').value = '';
+            currentData = null;
+
+            showStatus('Data cleared', 'info');
+        });
+
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+            statusDiv.style.display = 'block';
+
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        // Initial status
+        showStatus('Load a GeoJSON file to begin', 'info');
+    </script>
+</body>
+
+</html>

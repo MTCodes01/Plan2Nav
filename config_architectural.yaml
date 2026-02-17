@@ -1,0 +1,98 @@
+# Floor Plan to 3D GeoJSON Converter Configuration
+# OPTIMIZED FOR REAL ARCHITECTURAL FLOOR PLANS
+
+# Image Processing Settings
+image_processing:
+  # Threshold value for binary conversion (0-255)
+  threshold: 180
+  # Use adaptive thresholding instead of global
+  adaptive_threshold: true
+  # Gaussian blur kernel size for denoising (must be odd)
+  blur_kernel_size: 3
+  # Morphological operation kernel size (reduced to preserve room boundaries)
+  morph_kernel_size: 1
+  # Use advanced text removal preprocessing
+  remove_text: false
+
+# Wall Detection Settings
+wall_detection:
+  # Minimum wall thickness in pixels (reduced for thinner architectural walls)
+  min_thickness: 2
+  # Maximum wall thickness in pixels  
+  max_thickness: 15
+  # Hough transform parameters
+  hough_threshold: 80
+  hough_min_line_length: 50
+  hough_max_line_gap: 5
+
+# Text Detection Settings (OCR)
+text_detection:
+  enabled: true
+  confidence_threshold: 40.0
+  # tesseract_cmd: "C:/Program Files/Tesseract-OCR/tesseract.exe" # Uncomment and set path if not in PATH
+
+# Room Detection Settings
+room_detection:
+  # Minimum room area in pixels squared (filters fixtures but allows rooms)
+  min_area: 2000
+  # Maximum room area in pixels squared (0 = no limit)
+  max_area: 0
+  # Contour approximation epsilon factor
+  contour_epsilon: 0.01
+  # Whether to detect nested rooms (rooms inside rooms)
+  detect_nested: true
+
+# Wall Generation Settings
+wall_generation:
+  generate_walls: true
+  # Wall thickness in pixels (relative to image resolution)
+  wall_thickness: 2
+
+# Room Properties
+room_properties:
+  # Default ceiling height in meters
+  default_height: 3.0
+  # Default floor level in meters
+  default_base_height: 0.0
+  # Color palette for different room types
+  colors:
+    room: "#E8E8E8"
+    bedroom: "#FFE4B5"
+    living_room: "#98FB98"
+    kitchen: "#FFB6C1"
+    bathroom: "#ADD8E6"
+    hallway: "#D3D3D3"
+    closet: "#DEB887"
+    office: "#F0E68C"
+    dining: "#FFDAB9"
+    unknown: "#C0C0C0"
+
+# Coordinate Transformation Settings
+coordinate_transform:
+  # Center point in geographic coordinates (latitude, longitude)
+  center_lat: 0.0
+  center_lon: 0.0
+  # Scale factor: meters per pixel
+  meters_per_pixel: 0.1
+  # Rotation angle in degrees (counterclockwise)
+  rotation_degrees: 0.0
+
+# Output Settings
+output:
+  # Pretty print JSON output
+  pretty_print: true
+  # Decimal precision for coordinates
+  coordinate_precision: 8
+  # Generate debug images
+  generate_debug_images: true
+  # GeoJSON validation
+  validate_output: true
+
+# Logging Settings
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  level: INFO
+  # Log to file
+  log_to_file: false
+  # Log file path (relative to output folder)
+  log_file: "processing.log"
