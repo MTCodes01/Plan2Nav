@@ -450,13 +450,168 @@ class RoomDetector:
         }
 
 
-def create_detector(config: Dict[str, Any]) -> RoomDetector:
+    def detect_wall_polygons(self, wall_mask: np.ndarray, min_area: int = 500) -> List[Tuple]:
+        """
+        Extract wall polygons directly from the clean wall binary mask.
+
+        Uses RETR_CCOMP (2-level hierarchy) so each wall blob's outer boundary
+        becomes the exterior ring while its enclosed room interior becomes a
+        hole ring — accurately representing the real wall band geometry.
+
+        Args:
+            wall_mask : Clean binary image from FloorPlanProcessor.preprocess_walls().
+                        Wall pixels = 255 (white), background = 0 (black).
+            min_area  : Minimum contour area in pixels to keep (filters tiny fragments).
+
+        Returns:
+            List of (outer_pts, holes) where:
+              - outer_pts : list of [x, y] pixel coords for the exterior ring (not closed).
+              - holes     : list of lists of [x, y] pixel coords for interior hole rings.
+        """
+        contours, hierarchy = cv2.findContours(
+            wall_mask,
+            cv2.RETR_CCOMP,        # 2-level: top-level walls + their interior holes
+            cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        if hierarchy is None or len(contours) == 0:
+            logger.warning("No wall contours found in wall mask.")
+            return []
+
+        hierarchy = hierarchy[0]  # shape: (N, 4) → [next, prev, first_child, parent]
+        wall_polygons = []
+
+        for i, contour in enumerate(contours):
+            # Only process top-level contours (no parent)
+            if hierarchy[i][3] != -1:
+                continue
+
+            area = cv2.contourArea(contour)
+            if area < min_area:
+                continue
+
+            # Simplify outer ring — tight epsilon preserves wall corners
+            eps = 0.004 * cv2.arcLength(contour, True)
+            outer = cv2.approxPolyDP(contour, eps, True).reshape(-1, 2)
+
+            # Collect child contours (room interiors inside the wall blob = holes)
+            holes = []
+            child_idx = hierarchy[i][2]   # index of first child
+            while child_idx != -1:
+                child_contour = contours[child_idx]
+                child_area    = cv2.contourArea(child_contour)
+                if child_area > 100:
+                    eps_c = 0.004 * cv2.arcLength(child_contour, True)
+                    hole  = cv2.approxPolyDP(child_contour, eps_c, True).reshape(-1, 2)
+                    holes.append(hole.tolist())
+                child_idx = hierarchy[child_idx][0]   # next sibling
+
+            wall_polygons.append((outer.tolist(), holes))
+            logger.debug(
+                f"Wall polygon {len(wall_polygons)}: area={area:.0f}px\u00b2, "
+                f"outer_pts={len(outer)}, holes={len(holes)}"
+            )
+
+        logger.info(f"Detected {len(wall_polygons)} wall polygon(s) from mask.")
+        return wall_polygons
+
+    def detect_room_interiors(
+        self,
+        raw_image: np.ndarray,
+        min_area: int = 3000,
+    ) -> List[Tuple]:
+        """
+        Extract filled room polygons directly from the floor plan image.
+
+        Rooms in floor plan images are naturally white/light spaces completely
+        enclosed by thick dark walls. This method:
+        1. Converts to grayscale (if color input).
+        2. Thresholds: bright pixels (>180) become white = 'open space'.
+        3. Flood-fills from all four image borders to remove the exterior page margin.
+        4. The remaining white blobs are the enclosed room interiors.
+        5. Finds contours and returns (outer_pts, []) tuples.
+
+        Args:
+            raw_image : Original floor plan image (BGR or grayscale numpy array).
+            min_area  : Minimum room area in pixels (filters small fixtures/noise).
+
+        Returns:
+            List of (outer_pts, holes) where:
+              - outer_pts : list of [x, y] pixel coords for the room boundary.
+              - holes     : always empty [] for room interior polygons.
+        """
+        # Step 1: Ensure grayscale
+        if len(raw_image.shape) == 3:
+            gray = cv2.cvtColor(raw_image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = raw_image.copy()
+
+        h, w = gray.shape[:2]
+
+        # Step 2: Mild blur to reduce JPEG noise, then threshold: bright > 180 = white
+        blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+        _, bright = cv2.threshold(blurred, 180, 255, cv2.THRESH_BINARY)
+
+        # Step 3: Flood-fill from all border pixels to remove exterior page margin.
+        # Exterior is the large white region outside the building boundary walls.
+        flood = bright.copy()
+        ff_mask = np.zeros((h + 2, w + 2), dtype=np.uint8)
+
+        for x in range(w):
+            if flood[0, x] == 255:
+                cv2.floodFill(flood, ff_mask, (x, 0), 128)
+            if flood[h - 1, x] == 255:
+                cv2.floodFill(flood, ff_mask, (x, h - 1), 128)
+        for y in range(h):
+            if flood[y, 0] == 255:
+                cv2.floodFill(flood, ff_mask, (0, y), 128)
+            if flood[y, w - 1] == 255:
+                cv2.floodFill(flood, ff_mask, (w - 1, y), 128)
+
+        # Step 4: White pixels that were NOT flooded = enclosed room interiors
+        rooms_only = np.zeros_like(flood)
+        rooms_only[flood == 255] = 255
+
+        logger.debug(
+            f"Room interior pixels found: {(rooms_only > 0).sum()} "
+            f"(out of {h * w} total)"
+        )
+
+        # Step 5: Find contours of each room blob
+        contours, _ = cv2.findContours(
+            rooms_only,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        room_polygons = []
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area < min_area:
+                continue
+
+            # Simplify contour — preserve room corners
+            eps = 0.003 * cv2.arcLength(contour, True)
+            pts = cv2.approxPolyDP(contour, eps, True).reshape(-1, 2)
+
+            room_polygons.append((pts.tolist(), []))
+
+            logger.debug(
+                f"Room interior {len(room_polygons)}: "
+                f"area={area:.0f}px\u00b2, pts={len(pts)}"
+            )
+
+        logger.info(f"Detected {len(room_polygons)} room interior(s) from floor plan image.")
+        return room_polygons
+
+
+def create_detector(config: Dict[str, Any]) -> "RoomDetector":
     """
     Factory function to create a RoomDetector instance.
-    
+
     Args:
         config: Configuration dictionary
-        
+
     Returns:
         RoomDetector: Configured detector instance
     """

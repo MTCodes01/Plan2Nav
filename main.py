@@ -197,10 +197,101 @@ def process_floor_plan(
             logger.debug(f"Saved debug images to: {debug_dir}")
         
         logger.info(f"[OK] Successfully processed {image_path.name}")
+
+        # ----------------------------------------------------------------
+        # WALL EXTRACTION — new pipeline
+        # ----------------------------------------------------------------
+        try:
+            logger.info("--- Running wall extraction ---")
+
+            # 1. Build the clean wall-only binary mask
+            wall_mask = processor.preprocess_walls()
+
+            # 2. Save wall mask as a debug image
+            if generate_debug and config.get('output', {}).get('generate_debug_images', True):
+                debug_dir = output_dir / 'debug'
+                debug_dir.mkdir(exist_ok=True)
+                wall_mask_debug_path = debug_dir / f"{image_path.stem}_wall_mask.png"
+                processor.save_debug_image(wall_mask_debug_path, wall_mask)
+                logger.info(f"Wall mask saved → {wall_mask_debug_path}")
+
+            # 3. Detect wall polygons via RETR_CCOMP
+            wall_polygons = detector.detect_wall_polygons(wall_mask)
+
+            if wall_polygons:
+                # 4. Convert to GeoJSON and save
+                walls_output_path = output_dir / f"{image_path.stem}_walls.geojson"
+                converter.convert_wall_polygons(wall_polygons, image_height, walls_output_path)
+                logger.info(
+                    f"Wall GeoJSON saved ({len(wall_polygons)} features) → {walls_output_path}"
+                )
+            else:
+                logger.warning("Wall extraction produced 0 polygons — check wall mask quality.")
+
+        except Exception as wall_err:
+            logger.error(
+                f"Wall extraction failed for {image_path.name}: {wall_err}", exc_info=True
+            )
+            # Wall failure does NOT abort the main process
+
+        # ----------------------------------------------------------------
+        # ROOM INTERIOR EXTRACTION — filled room polygons from raw floor plan image
+        # ----------------------------------------------------------------
+        try:
+            logger.info("--- Running room interior extraction ---")
+
+            # detect_room_interiors works directly from the raw BGR floor plan image
+            raw_img = processor.original_image
+
+            # Detect enclosed room interiors (brightness threshold + border flood-fill)
+            room_interiors = detector.detect_room_interiors(raw_img)
+
+            if room_interiors:
+                # Save rooms debug image (brightness-thresholded, exterior removed)
+                if generate_debug and config.get('output', {}).get('generate_debug_images', True):
+                    import numpy as _np, cv2 as _cv2
+                    _g = _cv2.cvtColor(raw_img, _cv2.COLOR_BGR2GRAY)
+                    _, _b = _cv2.threshold(_cv2.GaussianBlur(_g, (3,3), 0), 180, 255, _cv2.THRESH_BINARY)
+                    _h, _w = _b.shape
+                    _fl = _b.copy(); _fm = _np.zeros((_h+2, _w+2), dtype=_np.uint8)
+                    for _x in range(_w):
+                        if _fl[0, _x]==255: _cv2.floodFill(_fl, _fm, (_x, 0), 128)
+                        if _fl[_h-1,_x]==255: _cv2.floodFill(_fl, _fm, (_x, _h-1), 128)
+                    for _y in range(_h):
+                        if _fl[_y, 0]==255: _cv2.floodFill(_fl, _fm, (0, _y), 128)
+                        if _fl[_y,_w-1]==255: _cv2.floodFill(_fl, _fm, (_w-1, _y), 128)
+                    _rd = _np.zeros_like(_fl); _rd[_fl==255]=255
+                    debug_dir = output_dir / 'debug'; debug_dir.mkdir(exist_ok=True)
+                    rooms_debug_path = debug_dir / f"{image_path.stem}_rooms_mask.png"
+                    processor.save_debug_image(rooms_debug_path, _rd)
+                    logger.info(f"Room interior mask saved → {rooms_debug_path}")
+
+                rooms_output_path = output_dir / f"{image_path.stem}_rooms_filled.geojson"
+                converter.convert_wall_polygons(
+                    room_interiors,
+                    image_height,
+                    rooms_output_path
+                )
+                logger.info(
+                    f"Rooms GeoJSON saved ({len(room_interiors)} features) "
+                    f"→ {rooms_output_path}"
+                )
+            else:
+                logger.warning(
+                    "Room interior extraction produced 0 polygons — "
+                    "check floor plan contrast or lower min_area."
+                )
+
+        except Exception as room_err:
+            logger.error(
+                f"Room interior extraction failed for {image_path.name}: {room_err}",
+                exc_info=True
+            )
+
         return True
-        
+
     except Exception as e:
-        logger.error(f"✗ Failed to process {image_path.name}: {e}", exc_info=True)
+        logger.error(f"\u2717 Failed to process {image_path.name}: {e}", exc_info=True)
         return False
 
 
@@ -241,8 +332,8 @@ Examples:
     parser.add_argument(
         '--config', '-c',
         type=str,
-        default='config.yaml',
-        help='Path to configuration file (default: config.yaml)'
+        default='config_architectural.yaml',
+        help='Path to configuration file (default: config_architectural.yaml)'
     )
     
     parser.add_argument(

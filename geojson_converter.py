@@ -278,3 +278,109 @@ class GeoJSONConverter:
         }
         
         return feature
+
+    # ------------------------------------------------------------------
+    # Wall polygon conversion
+    # ------------------------------------------------------------------
+
+    def convert_wall_polygons(
+        self,
+        wall_polygon_data: list,
+        image_height: int,
+        output_path: "Path",
+    ) -> dict:
+        """
+        Convert (outer_pts, holes) pixel-coordinate wall polygons to GeoJSON
+        and save to file.
+
+        Args:
+            wall_polygon_data : Output of RoomDetector.detect_wall_polygons().
+                                List of (outer_pts, [hole_pts, ...]).
+            image_height      : Pixel height of the source image (for Y-flip).
+            output_path       : Destination .geojson file path.
+
+        Returns:
+            GeoJSON FeatureCollection dict.
+        """
+        features = []
+
+        for outer_pts, holes_pts in wall_polygon_data:
+            if len(outer_pts) < 3:
+                continue
+
+            # Convert outer ring pixel coords → lon/lat
+            geo_outer = []
+            for x, y in outer_pts:
+                lon, lat = self._pixel_to_latlon(float(x), float(y), image_height)
+                geo_outer.append([round(lon, self.precision), round(lat, self.precision)])
+
+            # Close the ring
+            if geo_outer[0] != geo_outer[-1]:
+                geo_outer.append(geo_outer[0])
+
+            # GeoJSON exterior ring must be CCW
+            if not _is_ccw(geo_outer):
+                geo_outer = geo_outer[::-1]
+
+            # Convert hole rings
+            geo_holes = []
+            for hole_pts in holes_pts:
+                if len(hole_pts) < 3:
+                    continue
+                geo_hole = []
+                for x, y in hole_pts:
+                    lon, lat = self._pixel_to_latlon(float(x), float(y), image_height)
+                    geo_hole.append([round(lon, self.precision), round(lat, self.precision)])
+                if geo_hole[0] != geo_hole[-1]:
+                    geo_hole.append(geo_hole[0])
+                # GeoJSON hole rings must be CW
+                if _is_ccw(geo_hole):
+                    geo_hole = geo_hole[::-1]
+                geo_holes.append(geo_hole)
+
+            coordinates = [geo_outer] + geo_holes
+
+            feature = {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": coordinates,
+                },
+                "properties": {
+                    "type": "wall",
+                    "is_wall": True,
+                    "height": self.default_height,
+                    "base_height": self.default_base_height,
+                    "color": "#555555",
+                    "fill-extrusion-color": "#555555",
+                    "fill-extrusion-height": self.default_height,
+                    "fill-extrusion-base": self.default_base_height,
+                    "fill-extrusion-opacity": 1.0,
+                },
+            }
+            features.append(feature)
+
+        geojson = {"type": "FeatureCollection", "features": features}
+
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                import json as _json
+                _json.dump(geojson, f, indent=2 if self.pretty_print else None)
+            logger.info(
+                f"Saved {len(features)} wall feature(s) to {output_path}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to save wall GeoJSON: {e}")
+            raise
+
+        return geojson
+
+
+def _is_ccw(ring: list) -> bool:
+    """Return True if coordinate ring is counter-clockwise (shoelace formula)."""
+    n = len(ring)
+    area = sum(
+        (ring[i][0] * ring[(i + 1) % n][1]) - (ring[(i + 1) % n][0] * ring[i][1])
+        for i in range(n)
+    )
+    return area > 0
