@@ -79,6 +79,40 @@
             background: #f8f9ff;
         }
 
+        .floor-entry {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .floor-entry input[type="file"] {
+            flex: 1;
+        }
+
+        .floor-entry input[type="number"] {
+            width: 60px;
+            padding: 8px;
+            border: 2px solid #667eea;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+
+        .floor-entry button {
+            background: #ff4757;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .floor-entry button:hover {
+            background: #ff6b81;
+        }
+        
         .btn {
             width: 100%;
             padding: 10px;
@@ -226,9 +260,16 @@
         <div id="status"></div>
 
         <div class="control-group">
-            <label for="geojson-file">Load GeoJSON File:</label>
-            <input type="file" id="geojson-file" accept=".geojson,.json">
-            <button class="btn btn-secondary" id="load-example" style="font-size: 11px; margin-top: 5px;">Load example4_3d.geojson</button>
+            <label>Upload Floor Plans:</label>
+            <div id="floor-list">
+                <div class="floor-entry">
+                    <input type="file" accept=".png,.jpg,.jpeg" class="floor-file">
+                    <input type="number" placeholder="Floor" value="0" class="floor-num">
+                    <button type="button" class="remove-floor" onclick="this.parentElement.remove()" style="display:none;">&times;</button>
+                </div>
+            </div>
+            <button type="button" class="btn btn-secondary" id="add-floor-btn" style="font-size: 12px; margin-top: 5px;">+ Add Another Floor</button>
+            <button type="button" class="btn btn-primary" id="process-floors-btn" style="margin-top: 15px;">Process Floors</button>
         </div>
 
         <div class="toggle-switch">
@@ -284,72 +325,101 @@
         // Add navigation controls
         map.addControl(new maplibregl.NavigationControl(), 'top-left');
 
-        map.on('load', function () {
-            // Load floor plan overlay if available
-            fetch('output/overlay_config.json')
-                .then(response => {
-                    if (!response.ok) throw new Error("No overlay config found");
-                    return response.json();
-                })
-                .then(config => {
-                    console.log("Loading overlay image:", config);
-
-                    map.addSource('floorplan-image', {
-                        'type': 'image',
-                        'url': config.image_url,
-                        'coordinates': config.coordinates
-                    });
-
-                    map.addLayer({
-                        'id': 'floorplan-image-layer',
-                        'type': 'raster',
-                        'source': 'floorplan-image',
-                        'paint': {
-                            'raster-opacity': 1.0,
-                            'raster-fade-duration': 0
-                        }
-                    });
-
-                    // Move to bottom? No, on top of OSM (which is in style) is fine.
-                    // GeoJSON layers will be added on top of this.
-                })
-                .catch(err => {
-                    console.log("Overlay config not loaded:", err);
-                });
-        });
-
         let currentData = null;
 
-        document.getElementById('load-example').addEventListener('click', function () {
-            const exampleFile = 'output/example4_3d.geojson';
-            fetch(exampleFile)
-                .then(response => response.json())
-                .then(geojson => {
-                    loadGeoJSON(geojson);
-                    showStatus('Example GeoJSON loaded successfully!', 'success');
-                })
-                .catch(error => {
-                    console.error('Error loading example GeoJSON:', error);
-                    showStatus('Failed to load example GeoJSON', 'error');
-                });
+        document.getElementById('add-floor-btn').addEventListener('click', function(e) {
+            e.preventDefault();
+            const floorList = document.getElementById('floor-list');
+            const entries = floorList.getElementsByClassName('floor-entry');
+            const nextFloor = entries.length > 0 ? parseInt(entries[entries.length-1].querySelector('.floor-num').value) + 1 : 0;
+            
+            const div = document.createElement('div');
+            div.className = 'floor-entry';
+            div.innerHTML = `
+                <input type="file" accept=".png,.jpg,.jpeg" class="floor-file">
+                <input type="number" placeholder="Floor" value="${nextFloor}" class="floor-num">
+                <button type="button" class="remove-floor" onclick="this.parentElement.remove()">&times;</button>
+            `;
+            floorList.appendChild(div);
+            
+            // Show remove buttons if there's more than 1
+            Array.from(floorList.getElementsByClassName('remove-floor')).forEach(btn => {
+                btn.style.display = 'block';
+            });
         });
 
-        // Load GeoJSON file
-        document.getElementById('geojson-file').addEventListener('change', function (e) {
-            const file = e.target.files[0];
-            if (!file) return;
+        document.getElementById('process-floors-btn').addEventListener('click', async function(e) {
+            e.preventDefault();
+            const entries = document.querySelectorAll('.floor-entry');
+            const formData = new FormData();
+            let validFiles = 0;
 
-            const reader = new FileReader();
-            reader.onload = function (event) {
-                try {
-                    const geojson = JSON.parse(event.target.result);
-                    loadGeoJSON(geojson);
-                    showStatus('GeoJSON loaded successfully!', 'success');
-                } catch (error) {
-                    showStatus('Error loading GeoJSON: ' + error.message, 'error');
+            entries.forEach(entry => {
+                const fileInput = entry.querySelector('.floor-file');
+                const numInput = entry.querySelector('.floor-num');
+                
+                if (fileInput.files.length > 0) {
+                    formData.append('images[]', fileInput.files[0]);
+                    formData.append('floor_numbers[]', numInput.value);
+                    validFiles++;
                 }
-            };
-            reader.readAsText(file);
+            });
+
+            if (validFiles === 0) {
+                showStatus('Please select at least one floor plan image.', 'error');
+                return;
+            }
+
+            // Also support loading raw GeoJSON for backward compatibility if one was selected
+            if (validFiles === 1 && entries[0].querySelector('.floor-file').files[0].name.endsWith('.geojson')) {
+                const file = entries[0].querySelector('.floor-file').files[0];
+                const reader = new FileReader();
+                reader.onload = function (event) {
+                    try {
+                        const geojson = JSON.parse(event.target.result);
+                        loadGeoJSON(geojson);
+                        showStatus('GeoJSON loaded successfully!', 'success');
+                    } catch (error) {
+                        showStatus('Error loading GeoJSON: ' + error.message, 'error');
+                    }
+                };
+                reader.readAsText(file);
+                return;
+            }
+
+            const btn = document.getElementById('process-floors-btn');
+            const originalText = btn.innerText;
+            btn.innerText = 'Processing...';
+            btn.disabled = true;
+            showStatus('Uploading and processing floors... this may take a minute.', 'info');
+
+            try {
+                const response = await fetch('http://127.0.0.1:5000/api/process_floors', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                let responseData;
+                try {
+                    responseData = await response.json();
+                } catch (parseError) {
+                    throw new Error('Server returned an invalid response (not JSON). Make sure the backend server (app.py) is running.');
+                }
+
+                if (!response.ok) {
+                    throw new Error(responseData.error || 'Server processing failed');
+                }
+
+                loadGeoJSON(responseData);
+                showStatus('Floors processed and stacked successfully!', 'success');
+                
+            } catch (error) {
+                console.error(error);
+                showStatus('Error: ' + error.message, 'error');
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
         });
 
         function loadGeoJSON(geojson) {

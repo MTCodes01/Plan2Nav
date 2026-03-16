@@ -11,7 +11,7 @@ Author: Floor Plan to 3D GeoJSON Converter
 import cv2
 import numpy as np
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, Union
 import logging
 
 # Configure module logger
@@ -61,7 +61,7 @@ class FloorPlanProcessor:
         
         logger.debug(f"FloorPlanProcessor initialized with config: {self.config}")
     
-    def load_image(self, image_path: str | Path) -> np.ndarray:
+    def load_image(self, image_path: Union[str, Path]) -> np.ndarray:
         """
         Load an image from the specified path.
         
@@ -231,7 +231,7 @@ class FloorPlanProcessor:
         logger.debug(f"Applied morphological operations (kernel size={self._morph_kernel_size})")
         return opened
     
-    def preprocess(self, image_path: Optional[str | Path] = None) -> np.ndarray:
+    def preprocess(self, image_path: Optional[Union[str, Path]] = None) -> np.ndarray:
         """
         Run the complete preprocessing pipeline.
         
@@ -302,7 +302,7 @@ class FloorPlanProcessor:
     
     def save_debug_image(
         self,
-        output_path: str | Path,
+        output_path: Union[str, Path],
         image: Optional[np.ndarray] = None
     ) -> None:
         """
@@ -325,7 +325,7 @@ class FloorPlanProcessor:
         logger.debug(f"Saved debug image to: {output_path}")
 
 
-    def preprocess_walls(self, image_path: Optional[str | Path] = None) -> np.ndarray:
+    def preprocess_walls(self, image_path: Optional[Union[str, Path]] = None) -> np.ndarray:
         """
         Produce a clean wall-only binary mask from the floor plan image.
 
