@@ -10,6 +10,9 @@
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
 
+    <!-- Deck.gl for 3D Custom Layers -->
+    <script src="https://unpkg.com/deck.gl@8.9.0/dist.min.js"></script>
+
     <style>
         * {
             margin: 0;
@@ -277,6 +280,20 @@
             <input type="checkbox" id="toggle-3d" checked>
         </div>
 
+        <div class="control-group" style="margin-top: 10px;">
+            <label for="opacity-slider" style="display: flex; justify-content: space-between;">
+                Structure Opacity <span id="opacity-val">40%</span>
+            </label>
+            <input type="range" id="opacity-slider" min="0" max="100" value="40" style="width: 100%; cursor: pointer;">
+        </div>
+
+        <div class="control-group" style="margin-top: 10px;">
+            <label for="image-opacity-slider" style="display: flex; justify-content: space-between;">
+                Image Opacity <span id="image-opacity-val">90%</span>
+            </label>
+            <input type="range" id="image-opacity-slider" min="0" max="100" value="90" style="width: 100%; cursor: pointer;">
+        </div>
+
         <button class="btn btn-primary" id="reset-view">Reset View</button>
         <button class="btn btn-secondary" id="clear-data">Clear Data</button>
 
@@ -325,7 +342,16 @@
         // Add navigation controls
         map.addControl(new maplibregl.NavigationControl(), 'top-left');
 
+        // Setup Deck.gl MapboxOverlay
+        const {MapboxOverlay, BitmapLayer} = deck;
+        const deckOverlay = new MapboxOverlay({
+            interleaved: true,
+            layers: []
+        });
+        map.addControl(deckOverlay);
+
         let currentData = null;
+        let deckFloors = [];
 
         document.getElementById('add-floor-btn').addEventListener('click', function(e) {
             e.preventDefault();
@@ -410,7 +436,8 @@
                     throw new Error(responseData.error || 'Server processing failed');
                 }
 
-                loadGeoJSON(responseData);
+                loadGeoJSON(responseData.geojson);
+                updateDeckGLLayers(responseData.floors);
                 showStatus('Floors processed and stacked successfully!', 'success');
                 
             } catch (error) {
@@ -427,9 +454,8 @@
 
             // Remove existing source and layers if they exist
             if (map.getSource('floorplan')) {
-                if (map.getLayer('floorplan-3d')) map.removeLayer('floorplan-3d');
+                if (map.getLayer('floorplan-walls-3d')) map.removeLayer('floorplan-walls-3d');
                 if (map.getLayer('floorplan-2d')) map.removeLayer('floorplan-2d');
-                if (map.getLayer('floorplan-outline')) map.removeLayer('floorplan-outline');
                 map.removeSource('floorplan');
             }
 
@@ -448,7 +474,7 @@
                     'fill-extrusion-color': ['get', 'color'],
                     'fill-extrusion-height': ['get', 'height'],
                     'fill-extrusion-base': ['get', 'base_height'],
-                    'fill-extrusion-opacity': 0.9
+                    'fill-extrusion-opacity': parseFloat(document.getElementById('opacity-slider').value) / 100
                 },
                 layout: {
                     visibility: 'visible'
@@ -501,6 +527,44 @@
             });
         }
 
+        function updateDeckGLLayers(floors) {
+            console.log("updateDeckGLLayers called with floors:", floors);
+            deckFloors = floors;
+            const is3D = document.getElementById('toggle-3d').checked;
+            renderDeckOverlay(is3D);
+        }
+
+        function renderDeckOverlay(is3D) {
+            console.log("renderDeckOverlay called. is3D:", is3D, "deckFloors:", deckFloors);
+            if (!deckFloors || deckFloors.length === 0) {
+                deckOverlay.setProps({ layers: [] });
+                return;
+            }
+
+            const layers = deckFloors.map(floor => {
+                // Determine Z value based on 3D toggle
+                // If 2D, collapse to 0 or staggered small offsets to prevent z-fighting
+                const zOffset = is3D ? floor.base_height : (floor.floor_num * 0.01);
+                
+                // Copy bounds and apply correct Z
+                const bounds = floor.bounds.map(coord => [coord[0], coord[1], zOffset]);
+                console.log(`Floor ${floor.floor_num} URL=${floor.imageUrl} bounds=`, bounds);
+
+                return new BitmapLayer({
+                    id: `floor-image-${floor.floor_num}`,
+                    image: floor.imageUrl,
+                    bounds: bounds,
+                    opacity: parseFloat(document.getElementById('image-opacity-slider').value) / 100,
+                    parameters: {
+                        depthTest: true
+                    }
+                });
+            });
+
+            console.log("Setting deck overlay layers:", layers);
+            deckOverlay.setProps({ layers });
+        }
+
         function showRoomInfo(e) {
             const properties = e.features[0].properties;
             const infoPanel = document.getElementById('info-panel');
@@ -532,6 +596,26 @@
                     duration: 1000
                 });
             }
+
+            // Update deck.gl floor renderings
+            renderDeckOverlay(is3D);
+        });
+
+        // Opacity slider listener
+        document.getElementById('opacity-slider').addEventListener('input', function(e) {
+            const opacity = parseFloat(e.target.value) / 100;
+            document.getElementById('opacity-val').innerText = `${e.target.value}%`;
+
+            if (map.getLayer('floorplan-walls-3d')) {
+                map.setPaintProperty('floorplan-walls-3d', 'fill-extrusion-opacity', opacity);
+            }
+        });
+
+        // Image Opacity slider listener
+        document.getElementById('image-opacity-slider').addEventListener('input', function(e) {
+            document.getElementById('image-opacity-val').innerText = `${e.target.value}%`;
+            const is3D = document.getElementById('toggle-3d').checked;
+            renderDeckOverlay(is3D);
         });
 
         // Reset view
@@ -561,13 +645,24 @@
             if (map.getSource('floorplan')) {
                 if (map.getLayer('floorplan-3d')) map.removeLayer('floorplan-3d');
                 if (map.getLayer('floorplan-2d')) map.removeLayer('floorplan-2d');
-                if (map.getLayer('floorplan-outline')) map.removeLayer('floorplan-outline');
+                if (map.getLayer('floorplan-walls-3d')) map.removeLayer('floorplan-walls-3d');
                 map.removeSource('floorplan');
             }
 
             document.getElementById('info-panel').classList.remove('active');
-            document.getElementById('geojson-file').value = '';
+            
+            // clear inputs
+            document.querySelectorAll('.floor-entry').forEach((entry, idx) => {
+                if(idx > 0) entry.remove();
+                else {
+                    entry.querySelector('.floor-file').value = '';
+                    entry.querySelector('.floor-num').value = '0';
+                }
+            });
+
             currentData = null;
+            deckFloors = [];
+            renderDeckOverlay(document.getElementById('toggle-3d').checked);
 
             showStatus('Data cleared', 'info');
         });

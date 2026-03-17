@@ -16,6 +16,7 @@ ENV/
 # Project Specific
 #input/
 output/
+uploads
 uploads_tmp/
 debug_*/
 *.log

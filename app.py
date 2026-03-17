@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app)
 
-# Temporary directory for uploads
-UPLOAD_FOLDER = Path('uploads_tmp')
+# Directory for final uploads to keep and serve
+UPLOAD_FOLDER = Path('uploads')
 UPLOAD_FOLDER.mkdir(exist_ok=True)
 
 
@@ -41,6 +41,10 @@ def load_config() -> dict:
 @app.route('/')
 def index():
     return send_from_directory('.', 'index.html')
+
+@app.route('/uploads/<path:filename>')
+def serve_upload(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
 
 
 @app.route('/api/process_floors', methods=['POST'])
@@ -68,6 +72,7 @@ def process_floors():
 
     base_config = load_config()
     all_features = []
+    floors_data = []
 
     # Process each floor plan
     for floor_num, file_obj in sorted_pairs:
@@ -150,10 +155,22 @@ def process_floors():
             except Exception as room_err:
                 logger.error(f"Room interior extraction failed for {file_obj.filename}: {room_err}", exc_info=True)
 
-            # Cleanup temp files for this floor
-            for p in [temp_path, dummy_path_walls, dummy_path_rooms, dummy_path_filled]:
+            # Clean up JSON files
+            for p in [dummy_path_walls, dummy_path_rooms, dummy_path_filled]:
                 if p.exists():
                     p.unlink()
+
+            # Append the floor data for deckgl rendering
+            # Pass width and height to calculate deckgl bounds
+            width, height = processor.get_image_dimensions()
+            deckgl_bounds = converter.get_deckgl_bounds(width, height, calculated_base_height)
+            
+            floors_data.append({
+                "floor_num": floor_num,
+                "imageUrl": f"/uploads/{temp_path.name}",
+                "bounds": deckgl_bounds,
+                "base_height": calculated_base_height
+            })
 
         except Exception as e:
             logger.error(f"Error processing {file_obj.filename}: {e}", exc_info=True)
@@ -165,7 +182,10 @@ def process_floors():
         "features": all_features
     }
 
-    return jsonify(merged_geojson), 200
+    return jsonify({
+        "geojson": merged_geojson,
+        "floors": floors_data
+    }), 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
