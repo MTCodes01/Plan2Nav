@@ -364,7 +364,8 @@ class FloorPlanProcessor:
 
         # Step 3: Light dilation to thicken thin wall strokes so adjacent pieces merge.
         k3 = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        dilated = cv2.dilate(dark_mask, k3, iterations=2)
+        dilated = cv2.dilate(dark_mask, k3, iterations=1)
+
 
         # Step 4: Close with a larger kernel to bridge door/window openings.
         # A 35x35 kernel (3 iterations) reaches ~105 px, bridging most door gaps

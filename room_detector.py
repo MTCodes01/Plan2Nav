@@ -643,9 +643,10 @@ class RoomDetector:
             skel,  # Use skeleton directly instead of edges! Edges on singlepx = same
             rho=1,
             theta=np.pi / 180,
-            threshold=5,     # capturing extremely short paths
-            minLineLength=5,  # inclusive on stubs
+            threshold=8,     # filtering out isolated text character strokes
+            minLineLength=8,  # filter text while retaining walls
             maxLineGap=12     # bridge larger gaps on skeleton nodes
+
 
 
         )
