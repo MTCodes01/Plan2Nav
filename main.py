@@ -215,8 +215,9 @@ def process_floor_plan(
                 processor.save_debug_image(wall_mask_debug_path, wall_mask)
                 logger.info(f"Wall mask saved → {wall_mask_debug_path}")
 
-            # 3. Detect wall polygons via RETR_CCOMP
-            wall_polygons = detector.detect_wall_polygons(wall_mask)
+            # 3. Detect wall polygons via skeletonization and path-buffering
+            wall_polygons = detector.detect_wall_polygons_from_lines(wall_mask)
+
 
             if wall_polygons:
                 # 4. Convert to GeoJSON and save

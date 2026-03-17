@@ -358,8 +358,9 @@ class FloorPlanProcessor:
 
         # Step 2: Darkness threshold -- only very dark pixels become the wall candidate.
         # Pixels with brightness < 80 are structural walls; lighter values = text/furniture.
-        dark_thresh = 80
+        dark_thresh = self._threshold
         _, dark_mask = cv2.threshold(blurred, dark_thresh, 255, cv2.THRESH_BINARY_INV)
+
 
         # Step 3: Light dilation to thicken thin wall strokes so adjacent pieces merge.
         k3 = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))

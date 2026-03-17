@@ -117,7 +117,8 @@ def process_floors():
             converter = GeoJSONConverter(floor_config)
             dummy_path_rooms = temp_path.with_suffix('.rooms.json')
             feature_collection_rooms = converter.convert_and_save(rooms, image_height, dummy_path_rooms)
-            all_features.extend(feature_collection_rooms.get("features", []))
+            # all_features.extend(feature_collection_rooms.get("features", []))
+
 
             # ----------------------------------------------------------------
             # WALL EXTRACTION
@@ -125,7 +126,8 @@ def process_floors():
             dummy_path_walls = temp_path.with_suffix('.walls.json')
             try:
                 wall_mask = processor.preprocess_walls()
-                wall_polygons = detector.detect_wall_polygons(wall_mask)
+                wall_polygons = detector.detect_wall_polygons_from_lines(wall_mask)
+
                 
                 if wall_polygons:
                     wall_coll = converter.convert_wall_polygons(wall_polygons, image_height, dummy_path_walls)
@@ -144,14 +146,10 @@ def process_floors():
                 if room_interiors:
                     room_filled_coll = converter.convert_wall_polygons(room_interiors, image_height, dummy_path_filled)
                     
-                    # Overwrite is_wall and type to prevent it from looking like a grey wall
-                    for feat in room_filled_coll.get("features", []):
-                        feat["properties"]["is_wall"] = False
-                        feat["properties"]["room_type"] = "interior"
-                        feat["properties"]["color"] = "#8ea8c3" # Generic room color
-                        feat["properties"]["fill-extrusion-color"] = "#8ea8c3"
-                         
-                    all_features.extend(room_filled_coll.get("features", []))
+                    # All features will be appended directly
+                    # all_features.extend(room_filled_coll.get("features", []))
+
+
             except Exception as room_err:
                 logger.error(f"Room interior extraction failed for {file_obj.filename}: {room_err}", exc_info=True)
 
