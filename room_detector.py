@@ -643,9 +643,10 @@ class RoomDetector:
             skel,  # Use skeleton directly instead of edges! Edges on singlepx = same
             rho=1,
             theta=np.pi / 180,
-            threshold=self._hough_threshold,
-            minLineLength=self._hough_min_line_length,
+            threshold=15,    # adaptive for single-px skeletons
+            minLineLength=15, # retains short stubs & division walls 
             maxLineGap=self._hough_max_line_gap
+
         )
 
         if lines is None:
