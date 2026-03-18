@@ -6,3 +6,6 @@ Pillow>=10.0.0
 tqdm>=4.65.0
 scipy>=1.10.0
 pytesseract>=0.3.10
+Flask>=3.0.0
+werkzeug>=3.0.0
+flask-cors>=4.0.0

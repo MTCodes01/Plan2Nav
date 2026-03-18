@@ -11,7 +11,7 @@ Author: Floor Plan to 3D GeoJSON Converter
 import cv2
 import numpy as np
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, Union
 import logging
 
 # Configure module logger
@@ -61,7 +61,7 @@ class FloorPlanProcessor:
         
         logger.debug(f"FloorPlanProcessor initialized with config: {self.config}")
     
-    def load_image(self, image_path: str | Path) -> np.ndarray:
+    def load_image(self, image_path: Union[str, Path]) -> np.ndarray:
         """
         Load an image from the specified path.
         
@@ -231,7 +231,7 @@ class FloorPlanProcessor:
         logger.debug(f"Applied morphological operations (kernel size={self._morph_kernel_size})")
         return opened
     
-    def preprocess(self, image_path: Optional[str | Path] = None) -> np.ndarray:
+    def preprocess(self, image_path: Optional[Union[str, Path]] = None) -> np.ndarray:
         """
         Run the complete preprocessing pipeline.
         
@@ -302,7 +302,7 @@ class FloorPlanProcessor:
     
     def save_debug_image(
         self,
-        output_path: str | Path,
+        output_path: Union[str, Path],
         image: Optional[np.ndarray] = None
     ) -> None:
         """
@@ -325,13 +325,83 @@ class FloorPlanProcessor:
         logger.debug(f"Saved debug image to: {output_path}")
 
 
+    def preprocess_walls(self, image_path: Optional[Union[str, Path]] = None) -> np.ndarray:
+        """
+        Produce a clean wall-only binary mask from the floor plan image.
+
+        Strategy:
+        1. Extract very-dark pixels (brightness < 80) as the raw wall candidate mask.
+           Structural walls are near-black; text/furniture are gray and excluded.
+        2. Dilate the raw mask slightly so nearly-touching wall ends connect.
+        3. CLOSE with a wider kernel (~30-40 px) to bridge doorway/window openings --
+           this temporarily floods the room interiors.
+        4. ERODE by the same amount to shrink the flooded regions back down.
+           What remains connected after this round-trip IS the structural wall network.
+        5. AND with the original dark mask to restore pixel-perfect wall boundaries
+           (removes any non-wall area introduced by morphology).
+        6. Final small OPEN to clean up isolated noise pixels.
+
+        Returns:
+            np.ndarray: Binary mask -- structural wall pixels = 255, else 0.
+        """
+        if image_path is not None:
+            self.load_image(image_path)
+
+        if self.original_image is None:
+            raise ValueError("No image loaded. Provide image_path or call load_image() first.")
+
+        logger.info("Starting wall mask preprocessing pipeline...")
+
+        # Step 1: Grayscale + mild blur
+        gray    = self.to_grayscale()
+        blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+
+        # Step 2: Darkness threshold -- only very dark pixels become the wall candidate.
+        # Pixels with brightness < 80 are structural walls; lighter values = text/furniture.
+        dark_thresh = self._threshold
+        _, dark_mask = cv2.threshold(blurred, dark_thresh, 255, cv2.THRESH_BINARY_INV)
+
+
+        # Step 3: Light dilation to thicken thin wall strokes so adjacent pieces merge.
+        k3 = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        dilated = cv2.dilate(dark_mask, k3, iterations=1)
+
+
+        # Step 4: Close with a larger kernel to bridge door/window openings.
+        # A 35x35 kernel (3 iterations) reaches ~105 px, bridging most door gaps
+        # and wider terrace openings. The AND in step 5 strips any room fill.
+        gap_size = 35
+        k_gap  = cv2.getStructuringElement(cv2.MORPH_RECT, (gap_size, gap_size))
+        closed = cv2.morphologyEx(dilated, cv2.MORPH_CLOSE, k_gap, iterations=3)
+
+        # Step 5: AND with the dilated dark mask.
+        # 'closed' now has room interiors filled in; 'dilated' only has pixels that
+        # were originally near a dark wall stroke.  The AND strips the room fill,
+        # keeping ONLY original wall pixels that are now topologically connected.
+        combined = cv2.bitwise_and(closed, dilated)
+
+        # Step 6: Blob filter -- remove tiny isolated fragments (stray dots < 300 px)
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(combined, connectivity=8)
+        clean = np.zeros_like(combined)
+        for i in range(1, num_labels):
+            if stats[i, cv2.CC_STAT_AREA] >= 300:
+                clean[labels == i] = 255
+
+        # Step 7: Final small OPEN to remove single-pixel noise
+        clean = cv2.morphologyEx(clean, cv2.MORPH_OPEN, k3, iterations=1)
+
+        wall_px = int((clean > 0).sum())
+        logger.info(f"Wall mask complete: {wall_px} wall pixels retained.")
+        return clean
+
+
 def create_processor(config: Dict[str, Any]) -> FloorPlanProcessor:
     """
     Factory function to create a FloorPlanProcessor instance.
-    
+
     Args:
         config: Configuration dictionary
-        
+
     Returns:
         FloorPlanProcessor: Configured processor instance
     """

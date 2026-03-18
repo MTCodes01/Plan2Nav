@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>3D Indoor Navigation</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "Segoe UI", sans-serif;
+        }
+
+        body {
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: url('https://images.unsplash.com/photo-1524661135-423995f22d0b') no-repeat center/cover;
+            position: relative;
+        }
+
+        body::before {
+            content: "";
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(3px);
+        }
+
+        .login-box {
+            position: relative;
+            background: white;
+            padding: 35px;
+            width: 360px;
+            border-radius: 16px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+            text-align: center;
+        }
+
+        /* NEW LOGO */
+        .logo {
+            width: 60px;
+            height: 60px;
+            margin: 0 auto 10px;
+        }
+
+        .heading {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+            color: #2e2e2e;
+        }
+
+        h2 {
+            margin-bottom: 5px;
+            font-size: 20px;
+            color: #222;
+        }
+
+        p {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+            text-align: left;
+        }
+
+        .input-group label {
+            font-size: 13px;
+            margin-bottom: 5px;
+            display: block;
+            color: #444;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            outline: none;
+            transition: 0.2s;
+        }
+
+        .input-group input:focus {
+            border-color: #4CAF50;
+            box-shadow: 0 0 4px rgba(76, 175, 80, 0.3);
+        }
+
+        .options {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            margin-bottom: 15px;
+        }
+
+        .options a {
+            text-decoration: none;
+            color: #4CAF50;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: none;
+            background: #4CAF50;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        button:hover {
+            background: #388E3C;
+        }
+
+        .footer {
+            margin-top: 15px;
+            font-size: 13px;
+        }
+
+        .footer a {
+            color: #4CAF50;
+            text-decoration: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="login-box">
+
+        <!-- NEW 3D STYLE LOGO -->
+        <div class="logo">
+            <svg viewBox="0 0 64 64" width="100%" height="100%">
+
+                <!-- bottom layer -->
+                <polygon points="12,40 32,52 52,40 32,28" fill="#d0f0dc" />
+
+                <!-- middle layer -->
+                <polygon points="16,32 32,42 48,32 32,22" fill="#81c784" />
+
+                <!-- top layer -->
+                <polygon points="20,24 32,32 44,24 32,16" fill="#4CAF50" />
+
+                <!-- center point -->
+                <circle cx="32" cy="28" r="3" fill="white" />
+
+            </svg>
+        </div>
+
+        <!-- MAIN HEADING -->
+        <div class="heading">3D INDOOR NAVIGATION</div>
+
+        <h2>Welcome Back</h2>
+        <p>Sign in to continue your navigation</p>
+
+        <form onsubmit="login(event)">
+            <div class="input-group">
+                <label>Username</label>
+                <input type="text" placeholder="Enter your username" required>
+            </div>
+
+            <div class="input-group">
+                <label>Password</label>
+                <input type="password" placeholder="Enter your password" required>
+            </div>
+
+            <div class="options">
+                <label><input type="checkbox"> Remember me</label>
+                <a href="#">Forgot password?</a>
+            </div>
+
+            <button type="submit">Login</button>
+        </form>
+
+        <div class="footer">
+            Don't have an account? <a href="#">Register</a>
+        </div>
+
+    </div>
+
+    <script>
+        function login(e) {
+            e.preventDefault();
+            alert("Login successful");
+        }
+    </script>
+
+</body>
+
+</html>
