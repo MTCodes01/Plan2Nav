@@ -1,0 +1,1341 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Indoor Navigation - Role Management</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #f5f0e8 0%, #e8dcc8 25%, #d4cfb8 50%, #c8d8c0 75%, #f0e8d0 100%);
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background:
+                radial-gradient(ellipse at 20% 50%, rgba(180, 160, 120, 0.3) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, rgba(160, 190, 160, 0.3) 0%, transparent 50%),
+                radial-gradient(ellipse at 60% 80%, rgba(200, 180, 140, 0.3) 0%, transparent 50%),
+                radial-gradient(ellipse at 10% 10%, rgba(140, 160, 140, 0.2) 0%, transparent 40%),
+                radial-gradient(ellipse at 90% 90%, rgba(180, 170, 130, 0.2) 0%, transparent 40%);
+            z-index: 0;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background:
+                linear-gradient(90deg, transparent 49.5%, rgba(150, 140, 110, 0.08) 49.5%, rgba(150, 140, 110, 0.08) 50.5%, transparent 50.5%),
+                linear-gradient(0deg, transparent 49.5%, rgba(150, 140, 110, 0.08) 49.5%, rgba(150, 140, 110, 0.08) 50.5%, transparent 50.5%);
+            background-size: 80px 80px;
+            z-index: 0;
+        }
+
+        .page-wrapper {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        /* ============ TOP BAR ============ */
+        .top-bar {
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+        }
+
+        .top-bar-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .top-bar-brand .brand-icon {
+            width: 36px;
+            height: 36px;
+            background: #4CAF50;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .top-bar-brand .brand-icon svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        .top-bar-brand span {
+            font-weight: 700;
+            font-size: 15px;
+            color: #333;
+            letter-spacing: 0.5px;
+        }
+
+        .top-bar-nav {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .admin-badge {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+        }
+
+        .logout-btn {
+            background: rgba(0, 0, 0, 0.05);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            color: #333;
+            padding: 8px 16px;
+            border-radius: 10px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            backdrop-filter: blur(5px);
+        }
+
+        .logout-btn:hover {
+            background: #e74c3c;
+            border-color: #e74c3c;
+            color: white;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+        }
+
+        .logout-btn svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* ============ MAIN CARD ============ */
+        .card-container {
+            background: #ffffff !important;
+            backdrop-filter: blur(12px);
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1), 0 2px 10px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            max-width: 620px;
+            padding: 40px 45px;
+            animation: slideUp 0.6s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ============ HEADER ============ */
+        .card-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 14px;
+        }
+
+        .logo-icon svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .card-header h1 {
+            font-size: 19px;
+            font-weight: 800;
+            color: #2c3e50;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .card-header h2 {
+            font-size: 16px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .card-header p {
+            font-size: 13px;
+            color: #999;
+        }
+
+        /* ============ SEARCH ============ */
+        .search-section {
+            margin-bottom: 22px;
+        }
+
+        .search-wrapper {
+            position: relative;
+        }
+
+        .search-wrapper input {
+            width: 100%;
+            padding: 12px 15px 12px 42px;
+            border: 1.5px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 14px;
+            color: #333;
+            outline: none;
+            transition: border-color 0.3s, box-shadow 0.3s;
+            background: #fafafa;
+        }
+
+        .search-wrapper input:focus {
+            border-color: #4CAF50;
+            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+            background: #fff;
+        }
+
+        .search-wrapper input::placeholder {
+            color: #bbb;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 16px;
+            height: 16px;
+            color: #aaa;
+        }
+
+        /* ============ TABLE SECTION ============ */
+        .users-section {
+            margin-bottom: 25px;
+        }
+
+        .section-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .count-badge {
+            background: #e8f5e9;
+            color: #4CAF50;
+            font-size: 11px;
+            padding: 2px 10px;
+            border-radius: 10px;
+            font-weight: 700;
+        }
+
+        .users-table-wrapper {
+            border: 1.5px solid #e8e8e8;
+            border-radius: 12px;
+            overflow: hidden;
+            max-height: 340px;
+            overflow-y: auto;
+        }
+
+        .users-table-wrapper::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .users-table-wrapper::-webkit-scrollbar-track {
+            background: #f5f5f5;
+        }
+
+        .users-table-wrapper::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 3px;
+        }
+
+        .users-table-wrapper::-webkit-scrollbar-thumb:hover {
+            background: #aaa;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: #f8f9fa;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+
+        thead th {
+            padding: 13px 16px;
+            text-align: left;
+            font-size: 11.5px;
+            font-weight: 700;
+            color: #777;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            border-bottom: 2px solid #eee;
+        }
+
+        thead th:last-child {
+            text-align: center;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid #f2f2f2;
+            transition: background 0.2s;
+        }
+
+        tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        tbody tr:hover {
+            background: #f8fdf8;
+        }
+
+        tbody tr.changed {
+            background: #f0faf0;
+        }
+
+        tbody td {
+            padding: 13px 16px;
+            font-size: 13.5px;
+            color: #444;
+            vertical-align: middle;
+        }
+
+        tbody td:last-child {
+            text-align: center;
+        }
+
+        /* User Info */
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+        }
+
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 700;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .avatar-1 {
+            background: #4CAF50;
+        }
+
+        .avatar-2 {
+            background: #2196F3;
+        }
+
+        .avatar-3 {
+            background: #FF9800;
+        }
+
+        .avatar-4 {
+            background: #9C27B0;
+        }
+
+        .avatar-5 {
+            background: #009688;
+        }
+
+        .avatar-6 {
+            background: #f44336;
+        }
+
+        .avatar-7 {
+            background: #3F51B5;
+        }
+
+        .user-name {
+            font-weight: 600;
+            color: #333;
+            font-size: 13.5px;
+            line-height: 1.3;
+        }
+
+        .user-email {
+            font-size: 11.5px;
+            color: #aaa;
+        }
+
+        /* Role Badge */
+        .role-badge {
+            display: inline-block;
+            padding: 4px 14px;
+            border-radius: 15px;
+            font-size: 11.5px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            transition: all 0.3s;
+        }
+
+        .role-user {
+            background: #e3f2fd;
+            color: #1565C0;
+        }
+
+        .role-admin {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        /* Role Toggle Switch */
+        .role-toggle-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .role-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: color 0.3s;
+            min-width: 38px;
+        }
+
+        .role-label.label-user {
+            text-align: right;
+            color: #1565C0;
+        }
+
+        .role-label.label-admin {
+            text-align: left;
+            color: #ccc;
+        }
+
+        .role-label.active-label {
+            color: #1565C0;
+        }
+
+        .role-label.label-admin.active-label {
+            color: #e65100;
+        }
+
+        .role-label.inactive-label {
+            color: #ccc;
+        }
+
+        /* Toggle Switch */
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #64B5F6;
+            border-radius: 24px;
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: white;
+            top: 3px;
+            left: 3px;
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .toggle-switch input:checked+.toggle-slider {
+            background: #FF9800;
+        }
+
+        .toggle-switch input:checked+.toggle-slider::before {
+            transform: translateX(20px);
+        }
+
+        .toggle-switch input:focus+.toggle-slider {
+            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.15);
+        }
+
+        /* ============ STATS BAR ============ */
+        .stats-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 22px;
+        }
+
+        .stat-item {
+            flex: 1;
+            background: #f8f9fa;
+            border: 1.5px solid #eee;
+            border-radius: 10px;
+            padding: 14px 16px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .stat-item:hover {
+            border-color: #ddd;
+            background: #fff;
+        }
+
+        .stat-number {
+            font-size: 22px;
+            font-weight: 800;
+            line-height: 1;
+            margin-bottom: 4px;
+        }
+
+        .stat-number.green {
+            color: #4CAF50;
+        }
+
+        .stat-number.blue {
+            color: #1565C0;
+        }
+
+        .stat-number.orange {
+            color: #e65100;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: #999;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* ============ ACTION BUTTONS ============ */
+        .action-section {
+            display: flex;
+            gap: 12px;
+            margin-top: 25px;
+        }
+
+        .btn-primary {
+            flex: 1;
+            padding: 13px 20px;
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            letter-spacing: 0.3px;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #45a049, #3d8b40);
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            padding: 13px 28px;
+            background: transparent;
+            color: #999;
+            border: 1.5px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-secondary:hover {
+            border-color: #ccc;
+            color: #666;
+            background: #fafafa;
+        }
+
+        /* ============ FOOTER ============ */
+        .footer-link {
+            text-align: center;
+            margin-top: 18px;
+            font-size: 13px;
+            color: #999;
+        }
+
+        .footer-link a {
+            color: #4CAF50;
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.2s;
+        }
+
+        .footer-link a:hover {
+            color: #388E3C;
+            text-decoration: underline;
+        }
+
+        /* ============ TOAST ============ */
+        .toast {
+            position: fixed;
+            top: 30px;
+            right: 30px;
+            background: white;
+            border-radius: 12px;
+            padding: 16px 22px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 1000;
+            transform: translateX(420px);
+            opacity: 0;
+            transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            border-left: 4px solid #4CAF50;
+            max-width: 360px;
+        }
+
+        .toast.show {
+            transform: translateX(0);
+            opacity: 1;
+        }
+
+        .toast-icon {
+            width: 30px;
+            height: 30px;
+            background: #e8f5e9;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .toast-icon svg {
+            width: 16px;
+            height: 16px;
+            color: #4CAF50;
+        }
+
+        .toast-message {
+            font-size: 13.5px;
+            color: #333;
+            font-weight: 500;
+            line-height: 1.4;
+        }
+
+        .toast-close {
+            margin-left: 8px;
+            background: none;
+            border: none;
+            color: #ccc;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0 4px;
+            flex-shrink: 0;
+        }
+
+        .toast-close:hover {
+            color: #999;
+        }
+
+        /* ============ MODAL ============ */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(4px);
+            z-index: 999;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal-box {
+            background: white;
+            border-radius: 16px;
+            padding: 35px 38px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+            animation: modalSlide 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            text-align: center;
+        }
+
+        @keyframes modalSlide {
+            from {
+                opacity: 0;
+                transform: scale(0.8) translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        .modal-icon {
+            width: 60px;
+            height: 60px;
+            background: #fff3e0;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+            font-size: 28px;
+        }
+
+        .modal-box h3 {
+            font-size: 18px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .modal-box p {
+            font-size: 13.5px;
+            color: #777;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+
+        .modal-box .change-item {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin: 8px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            text-align: left;
+        }
+
+        .change-item .change-name {
+            font-weight: 600;
+            font-size: 13px;
+            color: #333;
+        }
+
+        .change-item .change-arrow {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+        }
+
+        .change-item .from-role {
+            color: #999;
+            font-weight: 500;
+        }
+
+        .change-item .arrow-icon {
+            color: #4CAF50;
+            font-weight: 700;
+        }
+
+        .change-item .to-role {
+            color: #4CAF50;
+            font-weight: 700;
+        }
+
+        .modal-changes {
+            margin-bottom: 22px;
+            max-height: 180px;
+            overflow-y: auto;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .modal-actions button {
+            flex: 1;
+            padding: 12px 15px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-confirm {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+        }
+
+        .btn-confirm:hover {
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
+        }
+
+        .btn-cancel {
+            background: white;
+            color: #888;
+            border: 1.5px solid #e0e0e0;
+        }
+
+        .btn-cancel:hover {
+            border-color: #ccc;
+            background: #fafafa;
+        }
+
+        /* ============ NO RESULTS ============ */
+        .no-results {
+            text-align: center;
+            padding: 30px 20px;
+            color: #bbb;
+            font-size: 14px;
+            display: none;
+        }
+
+        .no-results svg {
+            width: 40px;
+            height: 40px;
+            margin-bottom: 10px;
+            opacity: 0.4;
+        }
+
+        /* ============ RESPONSIVE ============ */
+        @media (max-width: 680px) {
+            .card-container {
+                padding: 30px 22px;
+                margin: 10px;
+            }
+
+            .top-bar {
+                padding: 10px 12px;
+            }
+
+            .stats-bar {
+                gap: 8px;
+            }
+
+            .stat-item {
+                padding: 10px 8px;
+            }
+
+            .stat-number {
+                font-size: 18px;
+            }
+
+            thead th,
+            tbody td {
+                padding: 11px 12px;
+            }
+
+            .user-avatar {
+                width: 32px;
+                height: 32px;
+                font-size: 12px;
+            }
+
+            .action-section {
+                flex-direction: column;
+            }
+
+            .user-email {
+                display: none;
+            }
+
+            .role-label {
+                display: none;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .card-container {
+                padding: 22px 16px;
+            }
+
+            .card-header h1 {
+                font-size: 16px;
+                letter-spacing: 1px;
+            }
+
+            .card-header h2 {
+                font-size: 14px;
+            }
+
+            .stats-bar {
+                flex-direction: row;
+            }
+
+            .stat-item {
+                padding: 10px 6px;
+            }
+
+            .stat-number {
+                font-size: 16px;
+            }
+
+            .stat-label {
+                font-size: 10px;
+            }
+
+            .top-bar-brand span {
+                font-size: 13px;
+            }
+
+            .admin-badge {
+                font-size: 10px;
+                padding: 5px 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Toast -->
+    <div class="toast" id="toast">
+        <div class="toast-icon">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+            </svg>
+        </div>
+        <span class="toast-message" id="toastMessage">Roles updated successfully!</span>
+        <button class="toast-close" onclick="hideToast()">×</button>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div class="modal-overlay" id="confirmModal">
+        <div class="modal-box">
+            <div class="modal-icon">🔐</div>
+            <h3>Confirm Role Changes</h3>
+            <div class="modal-changes" id="modalChanges"></div>
+            <p id="modalFooterText">This will update user permissions immediately.</p>
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+                <button class="btn-confirm" onclick="confirmChanges()">Yes, Update</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="page-wrapper">
+
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <div class="top-bar-brand">
+                <div class="brand-icon">
+                    <svg viewBox="0 0 24 24" fill="none">
+                        <path d="M12 2L20 8V16L12 22L4 16V8L12 2Z" fill="rgba(255,255,255,0.3)" stroke="white"
+                            stroke-width="1.5" />
+                        <path d="M12 6L17 9.5V15.5L12 19L7 15.5V9.5L12 6Z" fill="rgba(255,255,255,0.5)" />
+                        <circle cx="12" cy="11" r="2.5" fill="white" />
+                        <path d="M8.5 17C8.5 14.5 10 13.5 12 13.5C14 13.5 15.5 14.5 15.5 17" stroke="white"
+                            stroke-width="1.2" stroke-linecap="round" />
+                    </svg>
+                </div>
+                <span>3D INDOOR NAV</span>
+            </div>
+            <div class="top-bar-nav">
+                <span class="admin-badge">Super Admin</span>
+                <a href="#" class="logout-btn" onclick="handleLogout(event)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    Logout
+                </a>
+            </div>
+        </div>
+
+        <!-- Main Card -->
+        <div class="card-container">
+
+            <!-- Header -->
+            <div class="card-header">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 60 60" fill="none">
+                        <circle cx="30" cy="30" r="28" fill="#4CAF50" opacity="0.1" />
+                        <path d="M30 8L45 22V38L30 52L15 38V22L30 8Z" fill="#4CAF50" opacity="0.15" stroke="#4CAF50"
+                            stroke-width="1.5" />
+                        <path d="M30 15L40 23V35L30 43L20 35V23L30 15Z" fill="#4CAF50" opacity="0.35" />
+                        <circle cx="30" cy="27" r="5" fill="white" />
+                        <path d="M23 38C23 33.5 26.1 31 30 31C33.9 31 37 33.5 37 38" stroke="white" stroke-width="2"
+                            stroke-linecap="round" />
+                        <path d="M30 5L33 10H27L30 5Z" fill="#4CAF50" />
+                    </svg>
+                </div>
+                <h1>3D INDOOR NAVIGATION</h1>
+                <h2>Role Management</h2>
+
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-bar">
+                <div class="stat-item">
+                    <div class="stat-number green" id="statTotal">7</div>
+                    <div class="stat-label">Total Users</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number blue" id="statUsers">5</div>
+                    <div class="stat-label">Users</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number orange" id="statAdmins">2</div>
+                    <div class="stat-label">Admins</div>
+                </div>
+            </div>
+
+            <!-- Search -->
+            <div class="search-section">
+                <div class="search-wrapper">
+                    <svg class="search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input type="text" id="searchInput" placeholder="Search users by name or email..."
+                        oninput="filterUsers()">
+                </div>
+            </div>
+
+            <!-- Users Table -->
+            <div class="users-section">
+                <div class="section-label">
+                    Registered Users
+                    <span class="count-badge" id="userCount">7 users</span>
+                </div>
+                <div class="users-table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Current Role</th>
+                                <th>Assign Role</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                        </tbody>
+                    </table>
+                    <div class="no-results" id="noResults">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                        <div>No users found matching your search.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="action-section">
+                <button class="btn-secondary" onclick="resetRoles()">Reset</button>
+                <button class="btn-primary" onclick="openModal()">Save Changes</button>
+            </div>
+
+            <!-- Footer -->
+            <div class="footer-link">
+                Back to <a href="#">Dashboard</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============ USER DATA ============
+        const usersData = [
+            { id: 1, name: 'Alex Johnson', email: 'alex@example.com', initials: 'AJ', avatarClass: 'avatar-1', role: 'admin' },
+            { id: 2, name: 'Sarah Williams', email: 'sarah@example.com', initials: 'SW', avatarClass: 'avatar-2', role: 'user' },
+            { id: 3, name: 'Mike Chen', email: 'mike@example.com', initials: 'MC', avatarClass: 'avatar-3', role: 'user' },
+            { id: 4, name: 'Priya Patel', email: 'priya@example.com', initials: 'PP', avatarClass: 'avatar-4', role: 'admin' },
+            { id: 5, name: 'David Kim', email: 'david@example.com', initials: 'DK', avatarClass: 'avatar-5', role: 'user' },
+            { id: 6, name: 'Emma Wilson', email: 'emma@example.com', initials: 'EW', avatarClass: 'avatar-6', role: 'user' },
+            { id: 7, name: 'Raj Kumar', email: 'raj@example.com', initials: 'RK', avatarClass: 'avatar-7', role: 'user' },
+        ];
+
+        // Track current selections
+        let currentRoles = {};
+
+        // ============ INITIALIZE ============
+        function init() {
+            usersData.forEach(user => {
+                currentRoles[user.id] = user.role;
+            });
+            renderTable();
+            updateStats();
+        }
+
+        // ============ RENDER TABLE ============
+        function renderTable() {
+            const tbody = document.getElementById('usersTableBody');
+            tbody.innerHTML = '';
+
+            usersData.forEach(user => {
+                const isAdmin = currentRoles[user.id] === 'admin';
+                const roleBadgeClass = isAdmin ? 'role-admin' : 'role-user';
+                const roleBadgeText = isAdmin ? 'Admin' : 'User';
+
+                const row = document.createElement('tr');
+                row.setAttribute('data-id', user.id);
+                row.setAttribute('data-name', user.name.toLowerCase());
+                row.setAttribute('data-email', user.email.toLowerCase());
+
+                // Mark changed rows
+                if (currentRoles[user.id] !== user.role) {
+                    row.classList.add('changed');
+                }
+
+                row.innerHTML = `
+                    <td>
+                        <div class="user-info">
+                            <div class="user-avatar ${user.avatarClass}">${user.initials}</div>
+                            <div>
+                                <div class="user-name">${user.name}</div>
+                                <div class="user-email">${user.email}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="role-badge ${roleBadgeClass}" id="badge-${user.id}">${roleBadgeText}</span>
+                    </td>
+                    <td>
+                        <div class="role-toggle-wrapper">
+                            <span class="role-label label-user ${!isAdmin ? 'active-label' : 'inactive-label'}">User</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" ${isAdmin ? 'checked' : ''} onchange="toggleRole(${user.id}, this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="role-label label-admin ${isAdmin ? 'active-label' : 'inactive-label'}">Admin</span>
+                        </div>
+                    </td>
+                `;
+
+                tbody.appendChild(row);
+            });
+        }
+
+        // ============ TOGGLE ROLE ============
+        function toggleRole(userId, isAdmin) {
+            currentRoles[userId] = isAdmin ? 'admin' : 'user';
+            renderTable();
+            updateStats();
+            applySearchFilter();
+        }
+
+        // ============ UPDATE STATS ============
+        function updateStats() {
+            const total = usersData.length;
+            let adminCount = 0;
+            let userCount = 0;
+
+            Object.values(currentRoles).forEach(role => {
+                if (role === 'admin') adminCount++;
+                else userCount++;
+            });
+
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statUsers').textContent = userCount;
+            document.getElementById('statAdmins').textContent = adminCount;
+        }
+
+        // ============ SEARCH / FILTER ============
+        function filterUsers() {
+            applySearchFilter();
+        }
+
+        function applySearchFilter() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            const rows = document.querySelectorAll('#usersTableBody tr');
+            let visibleCount = 0;
+
+            rows.forEach(row => {
+                const name = row.getAttribute('data-name') || '';
+                const email = row.getAttribute('data-email') || '';
+                const match = name.includes(query) || email.includes(query);
+                row.style.display = match ? '' : 'none';
+                if (match) visibleCount++;
+            });
+
+            document.getElementById('userCount').textContent = visibleCount + ' user' + (visibleCount !== 1 ? 's' : '');
+            document.getElementById('noResults').style.display = visibleCount === 0 ? 'block' : 'none';
+        }
+
+        // ============ RESET ============
+        function resetRoles() {
+            usersData.forEach(user => {
+                currentRoles[user.id] = user.role;
+            });
+            renderTable();
+            updateStats();
+            applySearchFilter();
+            showToast('All roles reset to original values.');
+        }
+
+        // ============ MODAL ============
+        function openModal() {
+            const changes = getChanges();
+
+            if (changes.length === 0) {
+                showToast('No changes detected. Toggle roles first.');
+                return;
+            }
+
+            const changesHTML = changes.map(c => `
+                <div class="change-item">
+                    <span class="change-name">${c.name}</span>
+                    <div class="change-arrow">
+                        <span class="from-role">${c.from}</span>
+                        <span class="arrow-icon">→</span>
+                        <span class="to-role">${c.to}</span>
+                    </div>
+                </div>
+            `).join('');
+
+            document.getElementById('modalChanges').innerHTML = changesHTML;
+            document.getElementById('confirmModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('confirmModal').classList.remove('active');
+        }
+
+        function confirmChanges() {
+            closeModal();
+
+            // Save current roles as original
+            usersData.forEach(user => {
+                user.role = currentRoles[user.id];
+            });
+
+            renderTable();
+            updateStats();
+            applySearchFilter();
+            showToast('Roles updated successfully! Changes are now active.');
+        }
+
+        function getChanges() {
+            const changes = [];
+            usersData.forEach(user => {
+                if (currentRoles[user.id] !== user.role) {
+                    changes.push({
+                        name: user.name,
+                        from: capitalize(user.role),
+                        to: capitalize(currentRoles[user.id])
+                    });
+                }
+            });
+            return changes;
+        }
+
+        function capitalize(str) {
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+
+        // ============ TOAST ============
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMessage').textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => hideToast(), 4000);
+        }
+
+        function hideToast() {
+            document.getElementById('toast').classList.remove('show');
+        }
+
+        // ============ LOGOUT ============
+        function handleLogout(e) {
+            e.preventDefault();
+            if (confirm('Are you sure you want to logout?')) {
+                window.location.href = 'login.html';
+            }
+        }
+
+        // ============ MODAL OVERLAY CLICK ============
+        document.getElementById('confirmModal').addEventListener('click', function (e) {
+            if (e.target === this) closeModal();
+        });
+
+        // ============ KEYBOARD: ESC TO CLOSE MODAL ============
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        // Initialize
+        init();
+    </script>
+
+</body>
+
+</html>
