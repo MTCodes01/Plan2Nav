@@ -131,6 +131,10 @@ def process_floors():
                 
                 if wall_polygons:
                     wall_coll = converter.convert_wall_polygons(wall_polygons, image_height, dummy_path_walls)
+                    for f in wall_coll.get("features", []):
+                        if "properties" not in f:
+                            f["properties"] = {}
+                        f["properties"]["floor_num"] = floor_num
                     all_features.extend(wall_coll.get("features", []))
             except Exception as wall_err:
                 logger.error(f"Wall extraction failed for {file_obj.filename}: {wall_err}", exc_info=True)
@@ -173,6 +177,10 @@ def process_floors():
 
                     # convert_and_save takes list of objects with simplified_polygon
                     zones_coll = converter.convert_and_save(zones, image_height, dummy_path_zones)
+                    for f in zones_coll.get("features", []):
+                        if "properties" not in f:
+                            f["properties"] = {}
+                        f["properties"]["floor_num"] = floor_num
                     all_features.extend(zones_coll.get("features", []))
             except Exception as zone_err:
                 logger.error(f"Zone extraction failed for {file_obj.filename}: {zone_err}", exc_info=True)

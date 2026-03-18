@@ -275,7 +275,26 @@
             <button type="button" class="btn btn-primary" id="process-floors-btn" style="margin-top: 15px;">Process Floors</button>
         </div>
 
-        <div class="toggle-switch">
+        <!-- Floor and Zone Selection Tools -->
+        <div class="control-group" id="view-controls" style="display: none; border-top: 1px solid #e0e0e0; padding-top: 15px; margin-top: 15px;">
+            <h3 style="font-size: 14px; margin-bottom: 8px; color: #333;">👁️ View Filters</h3>
+            
+            <div style="margin-bottom: 10px;">
+                <label for="floor-select" style="font-size: 12px; font-weight: bold; color: #555; display: block; margin-bottom: 4px;">Select Floor:</label>
+                <select id="floor-select" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ccc; font-size: 13px; background: white;">
+                    <option value="all">-- All Floors --</option>
+                </select>
+            </div>
+
+            <div>
+                <label for="zone-select" style="font-size: 12px; font-weight: bold; color: #555; display: block; margin-bottom: 4px;">Select Zone (Highlight):</label>
+                <select id="zone-select" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ccc; font-size: 13px; background: white;">
+                    <option value="none">-- None --</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="toggle-switch" style="margin-top: 15px;">
             <label>3D View</label>
             <input type="checkbox" id="toggle-3d" checked>
         </div>
@@ -448,6 +467,18 @@
                 loadGeoJSON(responseData.geojson);
                 updateDeckGLLayers(responseData.floors);
                 showStatus('Floors processed and stacked successfully!', 'success');
+                
+                // Populate Floor Filter UI
+                const floorSelect = document.getElementById('floor-select');
+                floorSelect.innerHTML = '<option value="all">-- All Floors --</option>';
+                responseData.floors.forEach(f => {
+                    const opt = document.createElement('option');
+                    opt.value = f.floor_num;
+                    opt.innerText = `Floor ${f.floor_num}`;
+                    floorSelect.appendChild(opt);
+                });
+                document.getElementById('view-controls').style.display = 'block';
+                populateZoneSelect(); // Initialize zones
                 
             } catch (error) {
                 console.error(error);
@@ -704,9 +735,15 @@
             console.log("renderDeckOverlay called. is3D:", is3D, "deckFloors:", deckFloors);
             const layers = [];
 
+            const selectedFloor = document.getElementById('floor-select') ? document.getElementById('floor-select').value : 'all';
+
             // 1. Add BitmapLayers for floors
             if (deckFloors && deckFloors.length > 0) {
-                const bitmapLayers = deckFloors.map(floor => {
+                const filteredFloors = selectedFloor === 'all' 
+                    ? deckFloors 
+                    : deckFloors.filter(f => f.floor_num === parseInt(selectedFloor));
+                    
+                const bitmapLayers = filteredFloors.map(floor => {
                     const zOffset = is3D ? floor.base_height : (floor.floor_num * 0.01);
                     const bounds = floor.bounds.map(coord => [coord[0], coord[1], zOffset]);
                     console.log(`Floor ${floor.floor_num} URL=${floor.imageUrl} bounds=`, bounds);
@@ -726,7 +763,10 @@
 
             // 2. Add TextLayers for room names
             if (currentData && currentData.features) {
-                const textData = currentData.features.filter(f => !f.properties.is_wall && f.properties.centroid);
+                let textData = currentData.features.filter(f => !f.properties.is_wall && f.properties.centroid);
+                if (selectedFloor !== 'all') {
+                    textData = textData.filter(f => f.properties.floor_num === parseInt(selectedFloor));
+                }
                 if (textData.length > 0) {
                     const textLayer = new TextLayer({
                         id: 'room-labels',
@@ -863,6 +903,8 @@
             currentData = null;
             deckFloors = [];
             renderDeckOverlay(document.getElementById('toggle-3d').checked);
+            
+            document.getElementById('view-controls').style.display = 'none';
 
             showStatus('Data cleared', 'info');
         });
@@ -879,6 +921,95 @@
         }
 
         // Initial status
+        function populateZoneSelect() {
+            const selectedFloor = document.getElementById('floor-select').value;
+            const zoneSelect = document.getElementById('zone-select');
+            zoneSelect.innerHTML = '<option value="none">-- None --</option>';
+            
+            if (!currentData || !currentData.features) return;
+            
+            const uniqueZones = new Set();
+            currentData.features.forEach(f => {
+                const props = f.properties;
+                if (!props.is_wall && props.room_type && props.room_type !== 'unknown') {
+                    if (selectedFloor === 'all' || props.floor_num === parseInt(selectedFloor)) {
+                        uniqueZones.add(props.room_type);
+                    }
+                }
+            });
+            
+            uniqueZones.forEach(zone => {
+                const opt = document.createElement('option');
+                opt.value = zone;
+                opt.innerText = zone;
+                zoneSelect.appendChild(opt);
+            });
+        }
+
+        function updateMapFilters() {
+            const selectedFloor = document.getElementById('floor-select').value;
+            
+            if (!map.getSource('floorplan')) return;
+
+            if (selectedFloor !== 'all') {
+                const floorNum = parseInt(selectedFloor);
+                
+                map.setFilter('floorplan-walls-3d', ['all', ['==', ['get', 'is_wall'], true], ['==', ['get', 'floor_num'], floorNum]]);
+                map.setFilter('floorplan-zones-3d', ['all', ['!', ['get', 'is_wall']], ['==', ['get', 'floor_num'], floorNum]]);
+                map.setFilter('floorplan-2d', ['all', ['!', ['get', 'is_wall']], ['==', ['get', 'floor_num'], floorNum]]);
+            } else {
+                map.setFilter('floorplan-walls-3d', ['==', ['get', 'is_wall'], true]);
+                map.setFilter('floorplan-zones-3d', ['!', ['get', 'is_wall']]);
+                map.setFilter('floorplan-2d', ['!', ['get', 'is_wall']]);
+            }
+            
+            renderDeckOverlay(document.getElementById('toggle-3d').checked);
+            
+            // Clear current selection when floor changes to keep sync with dropdown reset
+            selectedStartZone = null;
+            selectedEndZone = null;
+            updateLayersSelectedColor();
+            updateNavigationUI();
+            
+            populateZoneSelect();
+        }
+
+        document.getElementById('floor-select').addEventListener('change', updateMapFilters);
+
+        document.getElementById('zone-select').addEventListener('change', function(e) {
+            const zoneName = e.target.value;
+            if (zoneName === 'none') {
+                selectedStartZone = null;
+                selectedEndZone = null;
+                updateLayersSelectedColor();
+                updateNavigationUI();
+                return;
+            }
+
+            if (currentData && currentData.features) {
+                const selectedFloor = document.getElementById('floor-select').value;
+                const feature = currentData.features.find(f => 
+                    f.properties.room_type === zoneName && 
+                    (!f.properties.is_wall) && 
+                    (selectedFloor === 'all' || f.properties.floor_num === parseInt(selectedFloor))
+                );
+                if (feature) {
+                    selectedStartZone = { id: feature.id, name: feature.properties.room_type };
+                    selectedEndZone = null;
+                    updateLayersSelectedColor();
+                    updateNavigationUI();
+
+                    if (feature.properties.centroid) {
+                        map.easeTo({
+                            center: feature.properties.centroid,
+                            zoom: Math.max(map.getZoom(), 19),
+                            duration: 1000
+                        });
+                    }
+                }
+            }
+        });
+
         showStatus('Load a GeoJSON file to begin', 'info');
     </script>
 </body>
