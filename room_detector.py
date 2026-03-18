@@ -776,8 +776,9 @@ class RoomDetector:
                 
             x, y, width, height = cv2.boundingRect(cnt)
             
-            # Filter out the exterior background (touches border)
-            if x <= margin or y <= margin or (x + width) >= (w - margin) or (y + height) >= (h - margin):
+            # Filter out the exterior background (usually very large)
+            total_area = h * w
+            if area > (total_area * 0.5):
                 continue
 
             # Standardize shape to (N, 1, 2)
