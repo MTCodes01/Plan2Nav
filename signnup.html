@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Sign Up - 3D Indoor Navigation</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "Segoe UI", sans-serif;
+        }
+
+        body {
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: url('https://images.unsplash.com/photo-1524661135-423995f22d0b') no-repeat center/cover;
+            position: relative;
+        }
+
+        body::before {
+            content: "";
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(3px);
+        }
+
+        .signup-box {
+            position: relative;
+            background: white;
+            padding: 35px;
+            width: 360px;
+            border-radius: 16px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+            text-align: center;
+        }
+
+        /* SAME 3D LOGO */
+        .logo {
+            width: 60px;
+            height: 60px;
+            margin: 0 auto 10px;
+        }
+
+        .heading {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+            color: #2e2e2e;
+        }
+
+        h2 {
+            margin-bottom: 5px;
+            font-size: 20px;
+            color: #222;
+        }
+
+        p {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+            text-align: left;
+        }
+
+        .input-group label {
+            font-size: 13px;
+            margin-bottom: 5px;
+            display: block;
+            color: #444;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            outline: none;
+            transition: 0.2s;
+        }
+
+        .input-group input:focus {
+            border-color: #4CAF50;
+            box-shadow: 0 0 4px rgba(76, 175, 80, 0.3);
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: none;
+            background: #4CAF50;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        button:hover {
+            background: #388E3C;
+        }
+
+        .footer {
+            margin-top: 15px;
+            font-size: 13px;
+        }
+
+        .footer a {
+            color: #4CAF50;
+            text-decoration: none;
+        }
+
+        .error {
+            color: red;
+            font-size: 12px;
+            display: none;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="signup-box">
+
+        <!-- SAME 3D LOGO -->
+        <div class="logo">
+            <svg viewBox="0 0 64 64" width="100%" height="100%">
+                <polygon points="12,40 32,52 52,40 32,28" fill="#d0f0dc" />
+                <polygon points="16,32 32,42 48,32 32,22" fill="#81c784" />
+                <polygon points="20,24 32,32 44,24 32,16" fill="#4CAF50" />
+                <circle cx="32" cy="28" r="3" fill="white" />
+            </svg>
+        </div>
+
+        <div class="heading">3D INDOOR NAVIGATION</div>
+
+        <h2>Create Account</h2>
+        <p>Sign up to start navigation</p>
+
+        <form onsubmit="signup(event)">
+            <div class="input-group">
+                <label>Username</label>
+                <input type="text" id="username" placeholder="Enter your username" required>
+            </div>
+
+            <div class="input-group">
+                <label>New Password</label>
+                <input type="password" id="password" placeholder="Enter new password" required>
+            </div>
+
+            <div class="input-group">
+                <label>Confirm Password</label>
+                <input type="password" id="confirmPassword" placeholder="Confirm password" required>
+                <div class="error" id="errorMsg">Passwords do not match</div>
+            </div>
+
+            <button type="submit">Sign Up</button>
+        </form>
+
+        <div class="footer">
+            Already have an account? <a href="#">Login</a>
+        </div>
+
+    </div>
+
+    <script>
+        function signup(e) {
+            e.preventDefault();
+
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+            const confirmPassword = document.getElementById("confirmPassword").value;
+            const errorMsg = document.getElementById("errorMsg");
+
+            if (password !== confirmPassword) {
+                errorMsg.style.display = "block";
+                return;
+            }
+
+            errorMsg.style.display = "none";
+
+            alert("Account created successfully for " + username);
+        }
+    </script>
+
+</body>
+
+</html>
