@@ -352,7 +352,7 @@
         map.addControl(new maplibregl.NavigationControl(), 'top-left');
 
         // Setup Deck.gl MapboxOverlay
-        const {MapboxOverlay, BitmapLayer} = deck;
+        const {MapboxOverlay, BitmapLayer, TextLayer} = deck;
         const deckOverlay = new MapboxOverlay({
             interleaved: true,
             layers: []
@@ -551,6 +551,20 @@
             if (geojson.features) {
                 geojson.features.forEach((f, i) => {
                     f.id = i + 1; // 1-indexed for safety
+                    
+                    // Calculate centroid for Polygon
+                    if (f.geometry && f.geometry.type === 'Polygon' && f.geometry.coordinates && f.geometry.coordinates[0]) {
+                        let sumLon = 0, sumLat = 0;
+                        const coords = f.geometry.coordinates[0];
+                        const count = coords.length - 1; // ignore last duplicate point
+                        for (let j = 0; j < count; j++) {
+                            sumLon += coords[j][0];
+                            sumLat += coords[j][1];
+                        }
+                        if (count > 0) {
+                            f.properties.centroid = [sumLon / count, sumLat / count];
+                        }
+                    }
                 });
             }
 
@@ -674,6 +688,9 @@
             map.on('mouseleave', 'floorplan-2d', () => {
                 map.getCanvas().style.cursor = '';
             });
+
+            // Update Deck.gl to render labels
+            renderDeckOverlay(document.getElementById('toggle-3d').checked);
         }
 
         function updateDeckGLLayers(floors) {
@@ -685,30 +702,60 @@
 
         function renderDeckOverlay(is3D) {
             console.log("renderDeckOverlay called. is3D:", is3D, "deckFloors:", deckFloors);
-            if (!deckFloors || deckFloors.length === 0) {
+            const layers = [];
+
+            // 1. Add BitmapLayers for floors
+            if (deckFloors && deckFloors.length > 0) {
+                const bitmapLayers = deckFloors.map(floor => {
+                    const zOffset = is3D ? floor.base_height : (floor.floor_num * 0.01);
+                    const bounds = floor.bounds.map(coord => [coord[0], coord[1], zOffset]);
+                    console.log(`Floor ${floor.floor_num} URL=${floor.imageUrl} bounds=`, bounds);
+
+                    return new BitmapLayer({
+                        id: `floor-image-${floor.floor_num}`,
+                        image: floor.imageUrl,
+                        bounds: bounds,
+                        opacity: parseFloat(document.getElementById('image-opacity-slider').value) / 100,
+                        parameters: {
+                            depthTest: true
+                        }
+                    });
+                });
+                layers.push(...bitmapLayers);
+            }
+
+            // 2. Add TextLayers for room names
+            if (currentData && currentData.features) {
+                const textData = currentData.features.filter(f => !f.properties.is_wall && f.properties.centroid);
+                if (textData.length > 0) {
+                    const textLayer = new TextLayer({
+                        id: 'room-labels',
+                        data: textData,
+                        getPosition: d => {
+                            const z = is3D ? d.properties.base_height + 0.3 : 0.05;
+                            return [d.properties.centroid[0], d.properties.centroid[1], z];
+                        },
+                        getText: d => d.properties.room_type,
+                        getSize: 14,
+                        getColor: [40, 44, 52, 255], // dark slate
+                        background: true,
+                        getBackgroundColor: [255, 255, 255, 190], // slight transparent white
+                        backgroundPadding: [4, 4],
+                        getTextAnchor: 'middle',
+                        getAlignmentBaseline: 'center',
+                        getFontWeight: 'bold',
+                        parameters: {
+                            depthTest: false // render on top
+                        }
+                    });
+                    layers.push(textLayer);
+                }
+            }
+
+            if (layers.length === 0) {
                 deckOverlay.setProps({ layers: [] });
                 return;
             }
-
-            const layers = deckFloors.map(floor => {
-                // Determine Z value based on 3D toggle
-                // If 2D, collapse to 0 or staggered small offsets to prevent z-fighting
-                const zOffset = is3D ? floor.base_height : (floor.floor_num * 0.01);
-                
-                // Copy bounds and apply correct Z
-                const bounds = floor.bounds.map(coord => [coord[0], coord[1], zOffset]);
-                console.log(`Floor ${floor.floor_num} URL=${floor.imageUrl} bounds=`, bounds);
-
-                return new BitmapLayer({
-                    id: `floor-image-${floor.floor_num}`,
-                    image: floor.imageUrl,
-                    bounds: bounds,
-                    opacity: parseFloat(document.getElementById('image-opacity-slider').value) / 100,
-                    parameters: {
-                        depthTest: true
-                    }
-                });
-            });
 
             console.log("Setting deck overlay layers:", layers);
             deckOverlay.setProps({ layers });

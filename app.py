@@ -142,6 +142,35 @@ def process_floors():
             try:
                 zones = detector.detect_rectangular_zones(wall_mask)
                 if zones:
+                    # Integrate Text Extraction with Swift OCR
+                    try:
+                        from text_detector import TextDetector
+                        text_detector = TextDetector(floor_config)
+                        # Run OCR on the original image using the saved image file path
+                        texts = text_detector.detect_text(processor.original_image, image_path=str(temp_path))
+                        
+                        import cv2
+                        import numpy as np
+                        for room in zones:
+                            match_texts = []
+                            poly = room.simplified_polygon
+                            if len(poly.shape) == 3:
+                                poly = poly.reshape(-1, 2)
+                            
+                            for txt in texts:
+                                pt = (float(txt.centroid[0]), float(txt.centroid[1]))
+                                is_inside = cv2.pointPolygonTest(poly.astype(np.float32), pt, False)
+                                if is_inside >= 0:
+                                    # Dedup text if multiple matches are identical
+                                    if txt.text not in match_texts:
+                                        match_texts.append(txt.text)
+                            
+                            if match_texts:
+                                room.room_type = " / ".join(match_texts)
+                                logger.info(f"Updated Zone {getattr(room, 'id', '')} to: {room.room_type}")
+                    except Exception as ocr_err:
+                        logger.error(f"OCR matching failed: {ocr_err}", exc_info=True)
+
                     # convert_and_save takes list of objects with simplified_polygon
                     zones_coll = converter.convert_and_save(zones, image_height, dummy_path_zones)
                     all_features.extend(zones_coll.get("features", []))

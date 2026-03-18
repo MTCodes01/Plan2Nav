@@ -10,6 +10,7 @@ import numpy as np
 import pytesseract
 from typing import List, Tuple, Dict, Any, Optional
 from dataclasses import dataclass
+from pathlib import Path
 import logging
 import platform
 
@@ -54,8 +55,33 @@ class TextDetector:
         if tesseract_cmd:
             pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
         
-        # Check if Tesseract is available
-        self._check_tesseract_availability()
+        # Check if Tesseract is available or use Swift on Mac
+        if platform.system() == "Darwin":
+            self._compile_swift_ocr()
+        else:
+            self._check_tesseract_availability()
+
+    def _compile_swift_ocr(self):
+        """Compile the swift script for faster execution on Mac."""
+        swift_script = Path(__file__).parent / 'swift_ocr2.swift'
+        self.swift_bin = Path(__file__).parent / 'swift_ocr_bin'
+        if swift_script.exists():
+            try:
+                import subprocess
+                # Compile to binary if not present
+                if not self.swift_bin.exists():
+                    logger.info(f"Compiling Swift OCR script: {swift_script}")
+                    subprocess.run(['swiftc', str(swift_script), '-o', str(self.swift_bin)], check=True)
+                self.use_swift = True
+                self.enabled = True
+                logger.info("Swift OCR loaded successfully")
+            except Exception as e:
+                logger.warning(f"Failed to compile Swift OCR script: {e}")
+                self.use_swift = False
+                self._check_tesseract_availability()
+        else:
+            self.use_swift = False
+            self._check_tesseract_availability()
 
     def _check_tesseract_availability(self):
         """Check if Tesseract is installed and available."""
@@ -72,12 +98,13 @@ class TextDetector:
                 logger.warning("On Windows, make sure Tesseract is installed and added to PATH, or configured in config.yaml")
             self.enabled = False
 
-    def detect_text(self, image: np.ndarray) -> List[DetectedText]:
+    def detect_text(self, image: np.ndarray, image_path: Optional[str] = None) -> List[DetectedText]:
         """
         Detect text in the given image.
         
         Args:
             image: Input image (BGR or Grayscale)
+            image_path: Optional full path to image file (Required for Swift OCR on Mac)
             
         Returns:
             List of DetectedText objects
@@ -85,6 +112,10 @@ class TextDetector:
         if not self.enabled or image is None:
             return []
             
+        # Use Swift if enabled and path provided
+        if getattr(self, 'use_swift', False) and image_path:
+            return self.detect_text_swift(image, image_path)
+
         try:
             # Convert to RGB for Tesseract (if BGR)
             if len(image.shape) == 3:
@@ -140,6 +171,68 @@ class TextDetector:
 
         except Exception as e:
             logger.error(f"Error during text detection: {e}")
+            return []
+
+    def detect_text_swift(self, image: np.ndarray, image_path: str) -> List[DetectedText]:
+        """Run swift OCR and parse output."""
+        if not hasattr(self, 'swift_bin') or not self.swift_bin.exists():
+            logger.warning("Swift binary not found or failed compiling")
+            return []
+
+        try:
+            import subprocess
+            logger.info(f"Running Swift OCR on {image_path}")
+            result = subprocess.run([str(self.swift_bin), image_path], capture_output=True, text=True)
+            if result.returncode != 0:
+                logger.warning(f"Swift OCR failed: {result.stderr}")
+                return []
+
+            detected_texts = []
+            height, width = image.shape[:2]
+
+            for line in result.stdout.splitlines():
+                if '|' not in line:
+                    continue
+                parts = line.split('|')
+                if len(parts) == 5:
+                    text_str, x_str, y_str, w_str, h_str = parts
+                    text_str = text_str.strip()
+                    if not text_str:
+                        continue
+                    try:
+                        x_norm = float(x_str)
+                        y_norm = float(y_str)
+                        w_norm = float(w_str)
+                        h_norm = float(h_str)
+
+                        # Swift coordinate transform (origin bottom-left, height grows UP)
+                        # OpenCV coordinate transform (origin top-left, height grows DOWN)
+                        p_x = int(x_norm * width)
+                        # Flipped Y math: (1.0 - (y + h)) * size
+                        p_y = int((1.0 - (y_norm + h_norm)) * height)
+                        p_w = int(w_norm * width)
+                        p_h = int(h_norm * height)
+
+                        centroid = (p_x + p_w // 2, p_y + p_h // 2)
+
+                        # Filter Single Characters noise
+                        if len(text_str) < 2 and text_str.lower() not in ['a', 'b', 'c', 'd', '1', '2', '3']:
+                            continue
+
+                        detected_texts.append(DetectedText(
+                            text=text_str,
+                            confidence=100.0,
+                            bounds=(p_x, p_y, p_w, p_h),
+                            centroid=centroid
+                        ))
+                    except Exception as parse_err:
+                        logger.warning(f"Failed to parse OCR line: '{line}': {parse_err}")
+
+            logger.info(f"Swift OCR detected {len(detected_texts)} text items")
+            return detected_texts
+
+        except Exception as e:
+            logger.error(f"Error executing Swift OCR: {e}")
             return []
 
     def draw_text_debug(self, image: np.ndarray, detections: List[DetectedText]) -> np.ndarray:
