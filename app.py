@@ -136,7 +136,21 @@ def process_floors():
                 logger.error(f"Wall extraction failed for {file_obj.filename}: {wall_err}", exc_info=True)
                 
             # ----------------------------------------------------------------
+            # ZONE EXTRACTION
+            # ----------------------------------------------------------------
+            dummy_path_zones = temp_path.with_suffix('.zones.json')
+            try:
+                zones = detector.detect_rectangular_zones(wall_mask)
+                if zones:
+                    # convert_and_save takes list of objects with simplified_polygon
+                    zones_coll = converter.convert_and_save(zones, image_height, dummy_path_zones)
+                    all_features.extend(zones_coll.get("features", []))
+            except Exception as zone_err:
+                logger.error(f"Zone extraction failed for {file_obj.filename}: {zone_err}", exc_info=True)
+
+            # ----------------------------------------------------------------
             # ROOM INTERIOR EXTRACTION
+
             # ----------------------------------------------------------------
             dummy_path_filled = temp_path.with_suffix('.filled.json')
             try:

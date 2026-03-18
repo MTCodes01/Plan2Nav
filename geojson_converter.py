@@ -279,21 +279,38 @@ class GeoJSONConverter:
         
         # Color lookup
         color = self.colors.get(room_type, self.colors.get('unknown', '#808080'))
+        if room_type.startswith("Zone"):
+            try:
+                # Extract coordinate index from 'Zone X'
+                index = int(room_type.split()[-1])
+            except:
+                index = 1
+            palette = ["#FF8C42", "#D9E2EC", "#4E8588", "#90A959", "#A44A3F", "#F2D06B"]
+            color = palette[(index - 1) % len(palette)]
+
         
         # Construct properties for 3D extrusion
+        height = self.default_height
+        base_height = self.default_base_height
+
+        if room_type.startswith("Zone") or (not has_wall and room_type != "unknown"):
+            height = base_height + 0.1  # Flat zone layout on floor
+
         props = {
             "room_type": room_type,
-            "height": self.default_height,
-            "base_height": self.default_base_height,
+            "height": height,
+            "base_height": base_height,
+
             "color": color,
             "area_pixels": float(getattr(room, 'area', 0)),
             "is_wall": has_wall,
             # MapLibre/Mapbox standard properties for 3D extrusion
             "fill-extrusion-color": color,
-            "fill-extrusion-height": self.default_height,
-            "fill-extrusion-base": self.default_base_height,
+            "fill-extrusion-height": height,
+            "fill-extrusion-base": base_height,
             "fill-extrusion-opacity": 0.8
         }
+
         
         # Create Feature
         feature = {

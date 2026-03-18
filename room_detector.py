@@ -711,9 +711,95 @@ class RoomDetector:
         logger.info(f"Buffered and merged {len(wall_polygons)} connected wall polygon(s).")
         return wall_polygons
 
+    def detect_rectangular_zones(self, wall_mask: np.ndarray) -> List[Room]:
+
+        """
+        Extract room zones as precise contour shapes from continuous inner voids of the wall mask.
+        Returns list of Room objects.
+        """
+        # 1. Thicken walls strongly to bridge door/window gap leaks
+        gap_size = 35
+        k_gap = cv2.getStructuringElement(cv2.MORPH_RECT, (gap_size, gap_size))
+        closed_walls = cv2.morphologyEx(wall_mask, cv2.MORPH_CLOSE, k_gap, iterations=2)
+
+        # 2. Invert mask: Voids are 255, Walls are 0
+        inverted = cv2.bitwise_not(closed_walls)
+        
+        # 3. Split large continuous open spaces (like Kitchen/Living) to divide rooms
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(inverted, connectivity=4)
+        split_mask = inverted.copy()
+        h, w = inverted.shape  # Fixed UnboundLocalError
+        margin = 10  # pixels border margin
+
+
+        for i in range(1, num_labels):
+            area = stats[i, cv2.CC_STAT_AREA]
+            x_b = stats[i, cv2.CC_STAT_LEFT]
+            y_b = stats[i, cv2.CC_STAT_TOP]
+            w_b = stats[i, cv2.CC_STAT_WIDTH]
+            h_b = stats[i, cv2.CC_STAT_HEIGHT]
+
+            if x_b <= margin or y_b <= margin or (x_b + w_b) >= (w - margin) or (y_b + h_b) >= (h - margin):
+                continue
+
+            # If space is very wide (e.g., width > 1.6 * height)
+            if (w_b / (h_b + 1)) > 1.6 and area > 10000:
+                cropped = inverted[y_b:y_b+h_b, x_b:x_b+w_b]
+                black_counts = np.sum(cropped == 0, axis=0)
+                best_x_offset = np.argmax(black_counts)
+
+                # If there is a clear wall-stub hanging down (more than 10px wall pixels)
+                if black_counts[best_x_offset] > 10:
+                    mid_x = x_b + best_x_offset
+                else:
+                    mid_x = x_b + w_b // 2
+
+                # Draw a 2px partition wall to split open space accurately along the stub axis
+                cv2.line(split_mask, (mid_x, y_b), (mid_x, y_b + h_b), 0, 2)
+
+
+        # 4. Find contours on the isolated room cavities
+        contours, _ = cv2.findContours(split_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        
+        zones = []
+        zone_index = 1
+        h, w = inverted.shape
+        margin = 10  # pixels border margin
+        
+        min_area = getattr(self, '_min_room_area', 100)
+        
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            if area < min_area:
+                continue
+                
+            x, y, width, height = cv2.boundingRect(cnt)
+            
+            # Filter out the exterior background (touches border)
+            if x <= margin or y <= margin or (x + width) >= (w - margin) or (y + height) >= (h - margin):
+                continue
+
+            # Standardize shape to (N, 1, 2)
+            pts = cnt.astype(np.int32)
+            
+            room = Room(
+                contour=pts,
+                area=float(area),
+                simplified_polygon=pts,
+                room_type=f"Zone {zone_index}"
+            )
+            zones.append(room)
+            zone_index += 1
+            
+        logger.info(f"Detected {len(zones)} precise room zone(s).")
+        return zones
+
+
 
 
 def create_detector(config: Dict[str, Any]) -> "RoomDetector":
+
 
     """
     Factory function to create a RoomDetector instance.

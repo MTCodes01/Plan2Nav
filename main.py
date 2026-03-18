@@ -229,6 +229,14 @@ def process_floor_plan(
             else:
                 logger.warning("Wall extraction produced 0 polygons — check wall mask quality.")
 
+            # 4.5. Detect rectangular room zones
+            zones = detector.detect_rectangular_zones(wall_mask)
+            if zones:
+                zones_output_path = output_dir / f"{image_path.stem}_zones.geojson"
+                converter.convert_and_save(zones, image_height, zones_output_path)
+                logger.info(f"Zones GeoJSON saved → {zones_output_path}")
+
+
         except Exception as wall_err:
             logger.error(
                 f"Wall extraction failed for {image_path.name}: {wall_err}", exc_info=True
