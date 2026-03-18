@@ -699,26 +699,6 @@
                 });
             }
 
-            // Click handlers
-            map.on('click', 'floorplan-zones-3d', handleZoneClick);
-            map.on('click', 'floorplan-2d', handleZoneClick);
-            
-            // Wall info click
-            map.on('click', 'floorplan-walls-3d', showRoomInfo);
-
-            // Change cursor on hover for zones
-            map.on('mouseenter', 'floorplan-zones-3d', () => {
-                map.getCanvas().style.cursor = 'pointer';
-            });
-            map.on('mouseleave', 'floorplan-zones-3d', () => {
-                map.getCanvas().style.cursor = '';
-            });
-            map.on('mouseenter', 'floorplan-2d', () => {
-                map.getCanvas().style.cursor = 'pointer';
-            });
-            map.on('mouseleave', 'floorplan-2d', () => {
-                map.getCanvas().style.cursor = '';
-            });
 
             // Update Deck.gl to render labels
             renderDeckOverlay(document.getElementById('toggle-3d').checked);
@@ -1008,6 +988,27 @@
                     }
                 }
             }
+        });
+
+        // Click handlers (Added once)
+        map.on('click', 'floorplan-zones-3d', handleZoneClick);
+        map.on('click', 'floorplan-2d', handleZoneClick);
+        
+        // Wall info click
+        map.on('click', 'floorplan-walls-3d', showRoomInfo);
+
+        // Change cursor on hover for zones
+        map.on('mouseenter', 'floorplan-zones-3d', () => {
+            map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', 'floorplan-zones-3d', () => {
+            map.getCanvas().style.cursor = '';
+        });
+        map.on('mouseenter', 'floorplan-2d', () => {
+            map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', 'floorplan-2d', () => {
+            map.getCanvas().style.cursor = '';
         });
 
         showStatus('Load a GeoJSON file to begin', 'info');
