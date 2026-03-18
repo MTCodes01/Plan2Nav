@@ -14,8 +14,10 @@ ENV/
 .vscode/
 
 # Project Specific
-input/
+#input/
 output/
+uploads
+uploads_tmp/
 debug_*/
 *.log
 traceback.txt

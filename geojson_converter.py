@@ -140,6 +140,34 @@ class GeoJSONConverter:
             [round(bl[0], self.precision), round(bl[1], self.precision)]
         ]
 
+    def get_deckgl_bounds(self, width: int, height: int, base_height: float) -> List[List[float]]:
+        """
+        Calculate the geographic bounds of the image for Deck.gl BitmapLayer.
+        Deck.gl expects bounds as [left, bottom, right, top], but for simple
+        alignment with extruded features, its better to give a 4 point array
+        [[left, bottom, z], [left, top, z], [right, top, z], [right, bottom, z]]
+        MapLibre bounds are usually [lon, lat], Deck.gl allows [lon, lat, Z]
+        """
+        # Top-Left (0, 0)
+        tl = self._pixel_to_latlon(0, 0, height)
+        # Top-Right (width, 0)
+        tr = self._pixel_to_latlon(width, 0, height)
+        # Bottom-Right (width, height)
+        br = self._pixel_to_latlon(width, height, height)
+        # Bottom-Left (0, height)
+        bl = self._pixel_to_latlon(0, height, height)
+        
+        # We need counter-clockwise coordinates starting from bottom-left for standard quad
+        # But Deck.gl BitmapLayer bounds property accepts:
+        # Array of four coordinates [ [left, bottom], [left, top], [right, top], [right, bottom] ]
+        # Each coordinate can be [x, y, z]
+        return [
+            [round(bl[0], self.precision), round(bl[1], self.precision), base_height],
+            [round(tl[0], self.precision), round(tl[1], self.precision), base_height],
+            [round(tr[0], self.precision), round(tr[1], self.precision), base_height],
+            [round(br[0], self.precision), round(br[1], self.precision), base_height]
+        ]
+
     def convert_and_save(self, rooms: List[Any], image_height: int, output_path: Path) -> Dict[str, Any]:
         """
         Convert detection results to GeoJSON and save to file.

@@ -605,7 +605,116 @@ class RoomDetector:
         return room_polygons
 
 
+    def _get_skeleton(self, binary_image: np.ndarray) -> np.ndarray:
+        """
+        Compute the skeleton (centerlines) of the binary image using iterative erosion.
+        """
+        img = binary_image.copy()
+        skel = np.zeros(img.shape, np.uint8)
+        element = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+        done = False
+
+        while not done:
+            eroded = cv2.erode(img, element)
+            temp = cv2.dilate(eroded, element)
+            temp = cv2.subtract(img, temp)
+            skel = cv2.bitwise_or(skel, temp)
+            img = eroded.copy()
+
+            if cv2.countNonZero(img) == 0:
+                done = True
+
+        return skel
+
+    def detect_wall_polygons_from_lines(self, wall_mask: np.ndarray) -> List[Tuple]:
+        """
+        Extract wall polygons by skeletonizing the wall mask, running HoughLinesP
+        to find single centerlines, and buffering those lines to create solid volumes.
+        """
+        from shapely.geometry import LineString
+        from shapely.ops import unary_union
+
+        # 1. Skeletonize to get single centerlines
+        skel = self._get_skeleton(wall_mask)
+
+        # 2. Run HoughLinesP on the skeleton
+        edges = cv2.Canny(skel, 50, 150, apertureSize=3)
+        lines = cv2.HoughLinesP(
+            skel,  # Use skeleton directly instead of edges! Edges on singlepx = same
+            rho=1,
+            theta=np.pi / 180,
+            threshold=8,     # filtering out isolated text character strokes
+            minLineLength=8,  # filter text while retaining walls
+            maxLineGap=12     # bridge larger gaps on skeleton nodes
+
+
+
+        )
+
+        if lines is None:
+            logger.warning("No line paths detected for walls on skeleton.")
+            return []
+
+        logger.info(f"HoughLines detected {len(lines)} paths on skeleton.")
+
+        # 3. Dilate and Erode (Morphological Closing) to bridge gaps in junctions
+        buffered_polys = []
+        thickness = self._wall_thickness if self._wall_thickness > 1 else 3
+
+        # D = Dilate radius to bridge gaps. E = Erode radius to restore thickness.
+        # D - E = thickness. 12 - 9 = 3. Bridges gaps up to 24px.
+        D = 12
+        E = D - thickness if (D - thickness) > 0 else 0
+
+        for line in lines:
+            for x1, y1, x2, y2 in line:
+                if x1 == x2 and y1 == y2:
+                    continue
+                ln = LineString([(x1, y1), (x2, y2)])
+                # Buffer with radius D for overlap
+                buffered = ln.buffer(D, cap_style=1, join_style=1)
+                if not buffered.is_empty:
+                    buffered_polys.append(buffered)
+
+        if not buffered_polys:
+            return []
+
+        # Merge overlapping dilated lines
+        merged_shape = unary_union(buffered_polys)
+
+        # Erode back to restore original wall thickness
+        if E > 0:
+            shrunk_shape = merged_shape.buffer(-E)
+        else:
+            shrunk_shape = merged_shape
+
+        wall_polygons = []
+        # Handle Multipolygon list or simple single polygon
+        if shrunk_shape.geom_type == 'Polygon':
+            shapes = [shrunk_shape]
+        elif shrunk_shape.geom_type == 'MultiPolygon':
+            shapes = shrunk_shape.geoms
+        else:
+            shapes = []
+
+        for poly in shapes:
+            if poly.is_empty:
+                continue
+
+            ext_coords = np.array(poly.exterior.coords)
+            holes = []
+            for hole in poly.interiors:
+                 holes.append(np.array(hole.coords).tolist())
+
+            wall_polygons.append((ext_coords.tolist(), holes))
+
+        logger.info(f"Buffered and merged {len(wall_polygons)} connected wall polygon(s).")
+        return wall_polygons
+
+
+
 def create_detector(config: Dict[str, Any]) -> "RoomDetector":
+
     """
     Factory function to create a RoomDetector instance.
 

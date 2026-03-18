@@ -11,7 +11,7 @@ Author: Floor Plan to 3D GeoJSON Converter
 import cv2
 import numpy as np
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, Union
 import logging
 
 # Configure module logger
@@ -61,7 +61,7 @@ class FloorPlanProcessor:
         
         logger.debug(f"FloorPlanProcessor initialized with config: {self.config}")
     
-    def load_image(self, image_path: str | Path) -> np.ndarray:
+    def load_image(self, image_path: Union[str, Path]) -> np.ndarray:
         """
         Load an image from the specified path.
         
@@ -231,7 +231,7 @@ class FloorPlanProcessor:
         logger.debug(f"Applied morphological operations (kernel size={self._morph_kernel_size})")
         return opened
     
-    def preprocess(self, image_path: Optional[str | Path] = None) -> np.ndarray:
+    def preprocess(self, image_path: Optional[Union[str, Path]] = None) -> np.ndarray:
         """
         Run the complete preprocessing pipeline.
         
@@ -302,7 +302,7 @@ class FloorPlanProcessor:
     
     def save_debug_image(
         self,
-        output_path: str | Path,
+        output_path: Union[str, Path],
         image: Optional[np.ndarray] = None
     ) -> None:
         """
@@ -325,7 +325,7 @@ class FloorPlanProcessor:
         logger.debug(f"Saved debug image to: {output_path}")
 
 
-    def preprocess_walls(self, image_path: Optional[str | Path] = None) -> np.ndarray:
+    def preprocess_walls(self, image_path: Optional[Union[str, Path]] = None) -> np.ndarray:
         """
         Produce a clean wall-only binary mask from the floor plan image.
 
@@ -358,12 +358,14 @@ class FloorPlanProcessor:
 
         # Step 2: Darkness threshold -- only very dark pixels become the wall candidate.
         # Pixels with brightness < 80 are structural walls; lighter values = text/furniture.
-        dark_thresh = 80
+        dark_thresh = self._threshold
         _, dark_mask = cv2.threshold(blurred, dark_thresh, 255, cv2.THRESH_BINARY_INV)
+
 
         # Step 3: Light dilation to thicken thin wall strokes so adjacent pieces merge.
         k3 = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        dilated = cv2.dilate(dark_mask, k3, iterations=2)
+        dilated = cv2.dilate(dark_mask, k3, iterations=1)
+
 
         # Step 4: Close with a larger kernel to bridge door/window openings.
         # A 35x35 kernel (3 iterations) reaches ~105 px, bridging most door gaps
