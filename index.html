@@ -294,12 +294,21 @@
             <input type="range" id="image-opacity-slider" min="0" max="100" value="90" style="width: 100%; cursor: pointer;">
         </div>
 
-        <button class="btn btn-primary" id="reset-view">Reset View</button>
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e0e0e0;" id="navigation-panel">
+            <h3 style="font-size: 14px; margin-bottom: 8px; color: #333;">📍 Navigation Selection</h3>
+            <div style="background: #f8f9fa; padding: 10px; border-radius: 6px; margin-bottom: 10px;">
+                <p style="font-size: 12px; margin-bottom: 5px;">🟢 <strong>Start:</strong> <span id="start-node" style="color: #2e7d32; font-weight: bold;">-</span></p>
+                <p style="font-size: 12px; margin-bottom: 0;">🔴 <strong>End:</strong> <span id="end-node" style="color: #c62828; font-weight: bold;">-</span></p>
+            </div>
+            <button class="btn btn-secondary" id="clear-nav-btn" style="font-size: 11px; padding: 5px; margin-bottom: 0; display: none;">Clear Selection</button>
+        </div>
+
+        <button class="btn btn-primary" id="reset-view" style="margin-top: 15px;">Reset View</button>
         <button class="btn btn-secondary" id="clear-data">Clear Data</button>
 
         <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e0e0e0;">
             <p style="font-size: 11px; color: #999; text-align: center;">
-                Click on a room to see details
+                Click on a zone to select for navigation (Start then End)
             </p>
         </div>
     </div>
@@ -449,13 +458,112 @@
             }
         });
 
+        let selectedStartZone = null;
+        let selectedEndZone = null;
+
+        function handleZoneClick(e) {
+            if (!e.features || e.features.length === 0) return;
+
+            const feature = e.features[0];
+            const props = feature.properties;
+
+            // If start is empty, set start
+            if (!selectedStartZone) {
+                selectedStartZone = { id: feature.id, name: props.room_type };
+                showStatus(`Selected Start: ${props.room_type}`, 'success');
+            } 
+            // If end is empty and not same as start, set end
+            else if (!selectedEndZone && feature.id !== selectedStartZone.id) {
+                selectedEndZone = { id: feature.id, name: props.room_type };
+                showStatus(`Selected End: ${props.room_type}`, 'success');
+            } 
+            // If clicked start again, clear start
+            else if (selectedStartZone && feature.id === selectedStartZone.id) {
+                selectedStartZone = null;
+                showStatus('Cleared Start', 'info');
+            }
+            // If clicked end again, clear end
+            else if (selectedEndZone && feature.id === selectedEndZone.id) {
+                selectedEndZone = null;
+                showStatus('Cleared End', 'info');
+            }
+            // Otherwise, set as end (replace end)
+            else {
+                selectedEndZone = { id: feature.id, name: props.room_type };
+                showStatus(`Updated End: ${props.room_type}`, 'success');
+            }
+
+            updateNavigationUI();
+            updateLayersSelectedColor();
+            
+            // Also show standard info
+            showRoomInfo(e);
+        }
+
+        function updateLayersSelectedColor() {
+            if (!map.getSource('floorplan')) return;
+
+            const startId = selectedStartZone ? selectedStartZone.id : -1;
+            const endId = selectedEndZone ? selectedEndZone.id : -1;
+
+            const colorExp = [
+                'case',
+                ['==', ['id'], startId], '#66bb6a', // Green
+                ['==', ['id'], endId], '#ef5350',   // Red
+                ['get', 'color']
+            ];
+
+            if (map.getLayer('floorplan-zones-3d')) {
+                map.setPaintProperty('floorplan-zones-3d', 'fill-extrusion-color', colorExp);
+            }
+            if (map.getLayer('floorplan-2d')) {
+                map.setPaintProperty('floorplan-2d', 'fill-color', colorExp);
+            }
+        }
+
+        function updateNavigationUI() {
+            document.getElementById('start-node').innerText = selectedStartZone ? selectedStartZone.name : '-';
+            document.getElementById('end-node').innerText = selectedEndZone ? selectedEndZone.name : '-';
+            
+            const clearBtn = document.getElementById('clear-nav-btn');
+            if (selectedStartZone || selectedEndZone) {
+                clearBtn.style.display = 'block';
+            } else {
+                clearBtn.style.display = 'none';
+            }
+        }
+
+        // Add listener for clear navigation button
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.id === 'clear-nav-btn') {
+                selectedStartZone = null;
+                selectedEndZone = null;
+                updateNavigationUI();
+                updateLayersSelectedColor();
+                showStatus('Navigation selection cleared', 'info');
+            }
+        });
+
         function loadGeoJSON(geojson) {
             currentData = geojson;
 
+            // Add IDs to features for selection logic
+            if (geojson.features) {
+                geojson.features.forEach((f, i) => {
+                    f.id = i + 1; // 1-indexed for safety
+                });
+            }
+
             // Remove existing source and layers if they exist
             if (map.getSource('floorplan')) {
-                if (map.getLayer('floorplan-walls-3d')) map.removeLayer('floorplan-walls-3d');
-                if (map.getLayer('floorplan-2d')) map.removeLayer('floorplan-2d');
+                const layersToRemove = [
+                    'floorplan-walls-3d', 
+                    'floorplan-zones-3d', 
+                    'floorplan-2d'
+                ];
+                layersToRemove.forEach(layer => {
+                    if (map.getLayer(layer)) map.removeLayer(layer);
+                });
                 map.removeSource('floorplan');
             }
 
@@ -465,11 +573,14 @@
                 data: geojson
             });
 
-            // Add 3D wall extrusion (thin wall polygons extruded vertically)
+            const is3D = document.getElementById('toggle-3d').checked;
+
+            // 1. Add 3D wall extrusion (is_wall === true)
             map.addLayer({
                 id: 'floorplan-walls-3d',
                 type: 'fill-extrusion',
                 source: 'floorplan',
+                filter: ['==', ['get', 'is_wall'], true],
                 paint: {
                     'fill-extrusion-color': ['get', 'color'],
                     'fill-extrusion-height': ['get', 'height'],
@@ -477,21 +588,50 @@
                     'fill-extrusion-opacity': parseFloat(document.getElementById('opacity-slider').value) / 100
                 },
                 layout: {
-                    visibility: 'visible'
+                    visibility: is3D ? 'visible' : 'none'
                 }
             });
 
-            // Add 2D fill layer (hidden by default)
+            // 2. Add 3D Zones Layer (is_wall === false or missing)
+            map.addLayer({
+                id: 'floorplan-zones-3d',
+                type: 'fill-extrusion',
+                source: 'floorplan',
+                filter: ['!', ['get', 'is_wall']],
+                paint: {
+                    'fill-extrusion-color': [
+                        'case',
+                        ['==', ['id'], selectedStartZone ? selectedStartZone.id : -1], '#66bb6a',
+                        ['==', ['id'], selectedEndZone ? selectedEndZone.id : -1], '#ef5350',
+                        ['get', 'color']
+                    ],
+                    // Raise slightly above base to overlay nicely
+                    'fill-extrusion-height': ['+', ['get', 'base_height'], 0.15],
+                    'fill-extrusion-base': ['get', 'base_height'],
+                    'fill-extrusion-opacity': 0.6
+                },
+                layout: {
+                    visibility: is3D ? 'visible' : 'none'
+                }
+            });
+
+            // 3. Add 2D fill layer (hidden by default)
             map.addLayer({
                 id: 'floorplan-2d',
                 type: 'fill',
                 source: 'floorplan',
+                filter: ['!', ['get', 'is_wall']],
                 paint: {
-                    'fill-color': ['get', 'color'],
+                    'fill-color': [
+                        'case',
+                        ['==', ['id'], selectedStartZone ? selectedStartZone.id : -1], '#66bb6a',
+                        ['==', ['id'], selectedEndZone ? selectedEndZone.id : -1], '#ef5350',
+                        ['get', 'color']
+                    ],
                     'fill-opacity': 0.7
                 },
                 layout: {
-                    visibility: 'none'
+                    visibility: is3D ? 'none' : 'visible'
                 }
             });
 
@@ -514,15 +654,24 @@
                 });
             }
 
-            // Add click event for room info
-            map.on('click', 'floorplan-3d', showRoomInfo);
-            map.on('click', 'floorplan-2d', showRoomInfo);
+            // Click handlers
+            map.on('click', 'floorplan-zones-3d', handleZoneClick);
+            map.on('click', 'floorplan-2d', handleZoneClick);
+            
+            // Wall info click
+            map.on('click', 'floorplan-walls-3d', showRoomInfo);
 
-            // Change cursor on hover
-            map.on('mouseenter', 'floorplan-3d', () => {
+            // Change cursor on hover for zones
+            map.on('mouseenter', 'floorplan-zones-3d', () => {
                 map.getCanvas().style.cursor = 'pointer';
             });
-            map.on('mouseleave', 'floorplan-3d', () => {
+            map.on('mouseleave', 'floorplan-zones-3d', () => {
+                map.getCanvas().style.cursor = '';
+            });
+            map.on('mouseenter', 'floorplan-2d', () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            map.on('mouseleave', 'floorplan-2d', () => {
                 map.getCanvas().style.cursor = '';
             });
         }
@@ -584,11 +733,14 @@
         document.getElementById('toggle-3d').addEventListener('change', function (e) {
             const is3D = e.target.checked;
 
-            if (map.getLayer('floorplan-walls-3d') && map.getLayer('floorplan-2d')) {
-                // In 3D mode: show colored wall outlines only
-                // In 2D mode: show filled 2D view
-                map.setLayoutProperty('floorplan-walls-3d', 'visibility', is3D ? 'visible' : 'none');
-                map.setLayoutProperty('floorplan-2d', 'visibility', is3D ? 'none' : 'visible');
+            const hasWalls = map.getLayer('floorplan-walls-3d');
+            const hasZones = map.getLayer('floorplan-zones-3d');
+            const has2D = map.getLayer('floorplan-2d');
+
+            if (hasWalls || hasZones || has2D) {
+                if (hasWalls) map.setLayoutProperty('floorplan-walls-3d', 'visibility', is3D ? 'visible' : 'none');
+                if (hasZones) map.setLayoutProperty('floorplan-zones-3d', 'visibility', is3D ? 'visible' : 'none');
+                if (has2D) map.setLayoutProperty('floorplan-2d', 'visibility', is3D ? 'none' : 'visible');
 
                 // Animate pitch
                 map.easeTo({
