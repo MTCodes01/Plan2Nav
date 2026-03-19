@@ -296,13 +296,42 @@ class GeoJSONConverter:
         if room_type.startswith("Zone") or (not has_wall and room_type != "unknown"):
             height = base_height + 0.1  # Flat zone layout on floor
 
+        # Calculate area in square meters
+        area_pixels = float(getattr(room, 'area', 0))
+        area_meters = area_pixels * (self.meters_per_pixel ** 2)
+        
+        logger.info(f"Feature: {room_type}, area_pixels: {area_pixels}, m_per_px: {self.meters_per_pixel}, area_m: {area_meters}")
+
+        # Calculate bounding box dimensions in meters
+        if hasattr(room, 'simplified_polygon'):
+            pts = room.simplified_polygon
+            if len(pts.shape) == 3:
+                pts = pts.reshape(-1, 2)
+            if len(pts) > 0:
+                min_pts = np.min(pts, axis=0)
+                max_pts = np.max(pts, axis=0)
+                w_px = max_pts[0] - min_pts[0]
+                h_px = max_pts[1] - min_pts[1]
+                dim1 = w_px * self.meters_per_pixel
+                dim2 = h_px * self.meters_per_pixel
+                length = max(dim1, dim2)
+                breadth = min(dim1, dim2)
+            else:
+                length = 0
+                breadth = 0
+        else:
+            length = 0
+            breadth = 0
+
         props = {
             "room_type": room_type,
             "height": height,
             "base_height": base_height,
-
+            "length": round(float(length), 2),
+            "breadth": round(float(breadth), 2),
+            "area": round(float(area_meters), 2),
             "color": color,
-            "area_pixels": float(getattr(room, 'area', 0)),
+            "area_pixels": area_pixels,
             "is_wall": has_wall,
             # MapLibre/Mapbox standard properties for 3D extrusion
             "fill-extrusion-color": color,
@@ -388,6 +417,17 @@ class GeoJSONConverter:
 
             coordinates = [geo_outer] + geo_holes
 
+            # Calculate area and dimensions for walls
+            pts_array = np.array(outer_pts)
+            min_pts = np.min(pts_array, axis=0)
+            max_pts = np.max(pts_array, axis=0)
+            w_px = max_pts[0] - min_pts[0]
+            h_px = max_pts[1] - min_pts[1]
+            dim1 = w_px * self.meters_per_pixel
+            dim2 = h_px * self.meters_per_pixel
+            length = max(dim1, dim2)
+            breadth = min(dim1, dim2)
+
             feature = {
                 "type": "Feature",
                 "geometry": {
@@ -395,10 +435,13 @@ class GeoJSONConverter:
                     "coordinates": coordinates,
                 },
                 "properties": {
-                    "type": "wall",
+                    "room_type": "wall",
                     "is_wall": True,
                     "height": self.default_height,
                     "base_height": self.default_base_height,
+                    "length": round(length, 2),
+                    "breadth": round(breadth, 2),
+                    "area": 0.0, # Wall area not critical for display
                     "color": "#555555",
                     "fill-extrusion-color": "#555555",
                     "fill-extrusion-height": self.default_height,

@@ -805,9 +805,9 @@
 
             roomInfo.innerHTML = `
                 <p><span class="room-color" style="background-color: ${properties.color}"></span><strong>Type:</strong> ${properties.room_type}</p>
-                <p><strong>Area:</strong> ${properties.area} m²</p>
-                <p><strong>Height:</strong> ${properties.height} m</p>
-                <p><strong>Base Height:</strong> ${properties.base_height} m</p>
+                <p><strong>Area:</strong> ${properties.area || 0} m²</p>
+                <p><strong>Length:</strong> ${properties.length || 0} m</p>
+                <p><strong>Breadth:</strong> ${properties.breadth || 0} m</p>
             `;
 
             infoPanel.classList.add('active');
