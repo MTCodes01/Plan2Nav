@@ -380,6 +380,8 @@
 
         let currentData = null;
         let deckFloors = [];
+        let currentGraph = null;
+        let routePath = [];
 
         document.getElementById('add-floor-btn').addEventListener('click', function(e) {
             e.preventDefault();
@@ -466,6 +468,7 @@
 
                 loadGeoJSON(responseData.geojson);
                 updateDeckGLLayers(responseData.floors);
+                currentGraph = responseData.graph; // Save graph for routing
                 showStatus('Floors processed and stacked successfully!', 'success');
                 
                 // Populate Floor Filter UI
@@ -526,6 +529,7 @@
 
             updateNavigationUI();
             updateLayersSelectedColor();
+            calculateAndDrawRoute();
             
             // Also show standard info
             showRoomInfo(e);
@@ -578,16 +582,13 @@
         function loadGeoJSON(geojson) {
             currentData = geojson;
 
-            // Add IDs to features for selection logic
+            // Calculate centroid for Polygon
             if (geojson.features) {
-                geojson.features.forEach((f, i) => {
-                    f.id = i + 1; // 1-indexed for safety
-                    
-                    // Calculate centroid for Polygon
+                geojson.features.forEach(f => {
                     if (f.geometry && f.geometry.type === 'Polygon' && f.geometry.coordinates && f.geometry.coordinates[0]) {
                         let sumLon = 0, sumLat = 0;
                         const coords = f.geometry.coordinates[0];
-                        const count = coords.length - 1; // ignore last duplicate point
+                        const count = coords.length - 1; 
                         for (let j = 0; j < count; j++) {
                             sumLon += coords[j][0];
                             sumLat += coords[j][1];
@@ -714,6 +715,21 @@
         function renderDeckOverlay(is3D) {
             console.log("renderDeckOverlay called. is3D:", is3D, "deckFloors:", deckFloors);
             const layers = [];
+
+            // Add Route Path Layer
+            if (window.routePath && window.routePath.length > 1) {
+                const {PathLayer} = deck;
+                layers.push(new PathLayer({
+                    id: 'route-path',
+                    data: [{ path: window.routePath }],
+                    getPath: d => d.path,
+                    getColor: [25, 118, 210, 230], // Material Blue
+                    getWidth: 1,
+                    widthScale: 1,
+                    widthMinPixels: 1.5,
+                    parameters: { depthTest: false }
+                }));
+            }
 
             const selectedFloor = document.getElementById('floor-select') ? document.getElementById('floor-select').value : 'all';
 
@@ -1010,6 +1026,155 @@
         map.on('mouseleave', 'floorplan-2d', () => {
             map.getCanvas().style.cursor = '';
         });
+
+
+        
+        function smoothPath(coords, iterations = 3) {
+            if (!coords || coords.length < 3) return coords;
+            
+            let path = coords;
+            for (let k = 0; k < iterations; k++) {
+                let newPath = [];
+                newPath.push(path[0]); // Keep Start
+                
+                for (let i = 1; i < path.length - 1; i++) {
+                    let p0 = path[i - 1];
+                    let p1 = path[i];
+                    let p2 = path[i + 1];
+                    
+                    let p1a = [
+                        0.75 * p1[0] + 0.25 * p0[0],
+                        0.75 * p1[1] + 0.25 * p0[1],
+                        0.75 * p1[2] + 0.25 * p0[2]
+                    ];
+                    let p1b = [
+                        0.75 * p1[0] + 0.25 * p2[0],
+                        0.75 * p1[1] + 0.25 * p2[1],
+                        0.75 * p1[2] + 0.25 * p2[2]
+                    ];
+                    
+                    newPath.push(p1a);
+                    newPath.push(p1b);
+                }
+                
+                newPath.push(path[path.length - 1]); // Keep End
+                path = newPath;
+            }
+            return path;
+        }
+
+        function calculateAndDrawRoute() {
+            if (!selectedStartZone || !selectedEndZone || !currentData || !currentGraph) return;
+
+            const startId = selectedStartZone.id;
+            const endId = selectedEndZone.id;
+
+            console.log("Calculating route from node", startId, "to", endId);
+            const pathNodeIds = findShortestPathAStar(currentGraph, startId, endId);
+
+            if (!pathNodeIds || pathNodeIds.length === 0) {
+                showStatus("No route found between zones", "error");
+                window.routePath = [];
+                renderDeckOverlay(document.getElementById('toggle-3d').checked);
+                return;
+            }
+
+            const pathCoords = [];
+            const is3D = document.getElementById('toggle-3d').checked;
+
+            for (let i = 0; i < pathNodeIds.length; i++) {
+                const nodeId = pathNodeIds[i];
+                const node = currentGraph.nodes.find(n => n.id === nodeId);
+                if (!node || !node.centroid) continue;
+
+                const z = is3D ? node.base_height + 0.2 : 0.1;
+                pathCoords.push([node.centroid[0], node.centroid[1], z]);
+
+                // Inject waypoint from Edge for smooth turns through doorways
+                if (i < pathNodeIds.length - 1) {
+                    const nextId = pathNodeIds[i + 1];
+                    const edge = currentGraph.edges.find(e => 
+                        (e.u === nodeId && e.v === nextId) || 
+                        (e.v === nodeId && e.u === nextId)
+                    );
+
+                    if (edge && edge.waypoint) {
+                        const nextNode = currentGraph.nodes.find(n => n.id === nextId);
+                        const edgeZ = is3D ? (node.base_height + (nextNode ? nextNode.base_height : node.base_height)) / 2 + 0.2 : 0.1;
+                        pathCoords.push([edge.waypoint[0], edge.waypoint[1], edgeZ]);
+                    }
+                }
+            }
+
+            window.routePath = smoothPath(pathCoords, 3);
+            showStatus(`Route calculated (${pathNodeIds.length - 1} steps)`, 'success');
+            renderDeckOverlay(is3D);
+        }
+
+        function findShortestPathAStar(graph, startId, endId) {
+            const nodes = graph.nodes;
+            const edges = graph.edges;
+
+            const openSet = [startId];
+            const cameFrom = {};
+
+            const gScore = {};
+            const fScore = {};
+            nodes.forEach(n => {
+                gScore[n.id] = Infinity;
+                fScore[n.id] = Infinity;
+            });
+            gScore[startId] = 0;
+            fScore[startId] = getHeuristic(graph, startId, endId);
+
+            function getHeuristic(g, u, v) {
+                const nU = g.nodes.find(n => n.id === u);
+                const nV = g.nodes.find(n => n.id === v);
+                if (!nU || !nV || !nU.centroid || !nV.centroid) return 0;
+                const dx = nU.centroid[0] - nV.centroid[0];
+                const dy = nU.centroid[1] - nV.centroid[1];
+                return Math.sqrt(dx*dx + dy*dy) * 111132.0;
+            }
+
+            while (openSet.length > 0) {
+                let current = openSet[0];
+                let currentIdx = 0;
+                for (let i = 1; i < openSet.length; i++) {
+                    if (fScore[openSet[i]] < fScore[current]) {
+                        current = openSet[i];
+                        currentIdx = i;
+                    }
+                }
+
+                if (current === endId) {
+                    const path = [current];
+                    while (cameFrom[current] !== undefined) {
+                        current = cameFrom[current];
+                        path.unshift(current);
+                    }
+                    return path;
+                }
+
+                openSet.splice(currentIdx, 1);
+
+                const neighbors = edges.filter(e => e.u === current || e.v === current);
+                for (const edge of neighbors) {
+                    const neighborId = edge.u === current ? edge.v : edge.u;
+                    const tentative_gScore = gScore[current] + edge.weight;
+
+                    if (tentative_gScore < gScore[neighborId]) {
+                        cameFrom[neighborId] = current;
+                        gScore[neighborId] = tentative_gScore;
+                        fScore[neighborId] = tentative_gScore + getHeuristic(graph, neighborId, endId);
+
+                        if (!openSet.includes(neighborId)) {
+                            openSet.push(neighborId);
+                        }
+                    }
+                }
+            }
+            return null;
+        }
 
         showStatus('Load a GeoJSON file to begin', 'info');
     </script>

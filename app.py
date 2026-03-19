@@ -73,6 +73,7 @@ def process_floors():
     base_config = load_config()
     all_features = []
     floors_data = []
+    global_room_id_counter = 1 # Added for graph building
 
     # Process each floor plan
     for floor_num, file_obj in sorted_pairs:
@@ -135,6 +136,7 @@ def process_floors():
                         if "properties" not in f:
                             f["properties"] = {}
                         f["properties"]["floor_num"] = floor_num
+                        f["properties"]["is_wall"] = True
                     all_features.extend(wall_coll.get("features", []))
             except Exception as wall_err:
                 logger.error(f"Wall extraction failed for {file_obj.filename}: {wall_err}", exc_info=True)
@@ -146,6 +148,11 @@ def process_floors():
             try:
                 zones = detector.detect_rectangular_zones(wall_mask)
                 if zones:
+                    # Assign unique IDs to zones for the navigation graph
+                    for room in zones:
+                        room.id = global_room_id_counter
+                        global_room_id_counter += 1
+
                     # Integrate Text Extraction with Swift OCR
                     try:
                         from text_detector import TextDetector
@@ -231,9 +238,18 @@ def process_floors():
         "features": all_features
     }
 
+    # Generate navigation graph
+    try:
+        from graph_builder import build_graph
+        graph = build_graph(merged_geojson)
+    except Exception as e:
+        logger.error(f"Failed to build navigation graph: {e}", exc_info=True)
+        graph = {"nodes": [], "edges": []}
+
     return jsonify({
         "geojson": merged_geojson,
-        "floors": floors_data
+        "floors": floors_data,
+        "graph": graph
     }), 200
 
 if __name__ == '__main__':

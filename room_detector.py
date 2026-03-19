@@ -38,6 +38,7 @@ class Room:
     wall_polygon: Optional[Polygon] = None
     room_type: str = "unknown"
     centroid: Tuple[float, float] = (0.0, 0.0)
+    id: int = 0  # Added for graph building
     
     def __post_init__(self):
         """Calculate centroid after initialization."""

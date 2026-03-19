@@ -322,6 +322,9 @@ class GeoJSONConverter:
             "properties": props
         }
         
+        if hasattr(room, 'id') and room.id > 0:
+            feature["id"] = room.id
+        
         return feature
 
     # ------------------------------------------------------------------
