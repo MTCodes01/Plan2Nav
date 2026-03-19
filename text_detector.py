@@ -55,10 +55,21 @@ class TextDetector:
         if tesseract_cmd:
             pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
         
-        # Check if Tesseract is available or use Swift on Mac
+        # Check if Tesseract is available or use Swift/EasyOCR
+        self.use_easyocr = False
+        try:
+            import easyocr
+            self.easyocr_reader = easyocr.Reader(['en'], gpu=False) # Default to CPU
+            self.use_easyocr = True
+            self.enabled = True
+            logger.info("EasyOCR loaded successfully for text detection")
+        except ImportError:
+            logger.info("EasyOCR not found. Falling back to platform default.")
+
         if platform.system() == "Darwin":
             self._compile_swift_ocr()
-        else:
+        
+        if not getattr(self, 'use_swift', False) and not self.use_easyocr:
             self._check_tesseract_availability()
 
     def _compile_swift_ocr(self):
@@ -115,6 +126,8 @@ class TextDetector:
         # Use Swift if enabled and path provided
         if getattr(self, 'use_swift', False) and image_path:
             return self.detect_text_swift(image, image_path)
+        elif getattr(self, 'use_easyocr', False):
+            return self.detect_text_easyocr(image)
 
         try:
             # Convert to RGB for Tesseract (if BGR)
@@ -233,6 +246,57 @@ class TextDetector:
 
         except Exception as e:
             logger.error(f"Error executing Swift OCR: {e}")
+            return []
+
+    def detect_text_easyocr(self, image: np.ndarray) -> List[DetectedText]:
+        """Run EasyOCR and parse output."""
+        if not getattr(self, 'use_easyocr', False):
+            return []
+
+        try:
+            # Convert to RGB (EasyOCR uses RGB)
+            if len(image.shape) == 3:
+                image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            else:
+                image_rgb = image
+                if len(image.shape) == 2:
+                    image_rgb = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+
+            logger.info("Running EasyOCR text detection")
+            results = self.easyocr_reader.readtext(image_rgb)
+            
+            detected_texts = []
+            for bbox, text_str, conf in results:
+                text_str = text_str.strip()
+                if not text_str or conf < (self.confidence_threshold / 100.0): # EasyOCR uses 0.0-1.0
+                    continue
+
+                if len(text_str) < 2 and text_str.lower() not in ['a', 'b', 'c', 'd', '1', '2', '3']:
+                    continue
+
+                # bbox is a list of 4 points [[x,y],[x,y],[x,y],[x,y]]
+                pts = np.array(bbox, dtype=np.int32)
+                x_min = int(np.min(pts[:, 0]))
+                y_min = int(np.min(pts[:, 1]))
+                x_max = int(np.max(pts[:, 0]))
+                y_max = int(np.max(pts[:, 1]))
+                w = x_max - x_min
+                h = y_max - y_min
+
+                centroid = (x_min + w // 2, y_min + h // 2)
+
+                detected_texts.append(DetectedText(
+                    text=text_str,
+                    confidence=conf * 100.0,
+                    bounds=(x_min, y_min, w, h),
+                    centroid=centroid
+                ))
+
+            logger.info(f"EasyOCR detected {len(detected_texts)} text items")
+            return detected_texts
+
+        except Exception as e:
+            logger.error(f"Error during EasyOCR detection: {e}")
             return []
 
     def draw_text_debug(self, image: np.ndarray, detections: List[DetectedText]) -> np.ndarray:
