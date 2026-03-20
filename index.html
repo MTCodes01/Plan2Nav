@@ -1082,33 +1082,219 @@
             const pathCoords = [];
             const is3D = document.getElementById('toggle-3d').checked;
 
+            // Group nodes by floor to segment the routing
+            let currentFloorNum = null;
+            let currentSegment = [];
+            const floorSegments = [];
+            
             for (let i = 0; i < pathNodeIds.length; i++) {
                 const nodeId = pathNodeIds[i];
                 const node = currentGraph.nodes.find(n => n.id === nodeId);
-                if (!node || !node.centroid) continue;
+                if (!node || node.floor === undefined || !node.centroid) continue;
+                
+                if (currentFloorNum === null) {
+                    currentFloorNum = node.floor;
+                    currentSegment.push(node);
+                } else if (currentFloorNum === node.floor) {
+                    currentSegment.push(node);
+                } else {
+                    floorSegments.push({ floor: currentFloorNum, nodes: currentSegment });
+                    currentFloorNum = node.floor;
+                    currentSegment = [node];
+                }
+            }
+            if (currentSegment.length > 0) {
+                floorSegments.push({ floor: currentFloorNum, nodes: currentSegment });
+            }
 
-                const z = is3D ? node.base_height + 0.2 : 0.1;
-                pathCoords.push([node.centroid[0], node.centroid[1], z]);
-
-                // Inject waypoint from Edge for smooth turns through doorways
-                if (i < pathNodeIds.length - 1) {
-                    const nextId = pathNodeIds[i + 1];
-                    const edge = currentGraph.edges.find(e => 
-                        (e.u === nodeId && e.v === nextId) || 
-                        (e.v === nodeId && e.u === nextId)
-                    );
-
-                    if (edge && edge.waypoint) {
-                        const nextNode = currentGraph.nodes.find(n => n.id === nextId);
-                        const edgeZ = is3D ? (node.base_height + (nextNode ? nextNode.base_height : node.base_height)) / 2 + 0.2 : 0.1;
-                        pathCoords.push([edge.waypoint[0], edge.waypoint[1], edgeZ]);
+            for (const segment of floorSegments) {
+                const floorData = deckFloors.find(f => f.floor_num === segment.floor);
+                
+                if (floorData && floorData.nav_grid) {
+                    const startCentroid = segment.nodes[0].centroid;
+                    const endCentroid = segment.nodes[segment.nodes.length - 1].centroid;
+                    
+                    const gridPath = findGridPathAStar(floorData.nav_grid, floorData.bounds, startCentroid, endCentroid);
+                    
+                    if (gridPath && gridPath.length > 0) {
+                        const z = is3D ? floorData.base_height + 0.2 : 0.1;
+                        // Directly use optimal grid path
+                        gridPath.forEach(pt => {
+                            pathCoords.push([pt[0], pt[1], z]);
+                        });
+                        continue; 
                     }
+                }
+                
+                // Fallback to simple centroid sequence if nav_grid fails or path not found
+                for (let i = 0; i < segment.nodes.length; i++) {
+                    const node = segment.nodes[i];
+                    const z = is3D ? node.base_height + 0.2 : 0.1;
+                    pathCoords.push([node.centroid[0], node.centroid[1], z]);
                 }
             }
 
             window.routePath = smoothPath(pathCoords, 3);
-            showStatus(`Route calculated (${pathNodeIds.length - 1} steps)`, 'success');
+            showStatus(`Optimal route calculated!`, 'success');
             renderDeckOverlay(is3D);
+        }
+
+        function getGridPos(lon, lat, grid, bounds) {
+            const minLon = bounds[0][0]; // bottom-left
+            const maxLon = bounds[2][0]; // top-right
+            const minLat = bounds[0][1]; // bottom-left
+            const maxLat = bounds[1][1]; // top-left
+            
+            let x = Math.floor(((lon - minLon) / (maxLon - minLon)) * grid.width);
+            let y = Math.floor(((maxLat - lat) / (maxLat - minLat)) * grid.height);
+            
+            x = Math.max(0, Math.min(grid.width - 1, x));
+            y = Math.max(0, Math.min(grid.height - 1, y));
+            return {x, y};
+        }
+
+        function getLonLat(x, y, grid, bounds) {
+            const minLon = bounds[0][0];
+            const maxLon = bounds[2][0];
+            const minLat = bounds[0][1];
+            const maxLat = bounds[1][1];
+            
+            const lon = minLon + (x + 0.5) / grid.width * (maxLon - minLon);
+            const lat = maxLat - (y + 0.5) / grid.height * (maxLat - minLat);
+            return [lon, lat];
+        }
+
+        function findGridPathAStar(grid, bounds, startLonLat, endLonLat) {
+            if (!grid || !grid.data || grid.data.length === 0) return null;
+            
+            const startPos = getGridPos(startLonLat[0], startLonLat[1], grid, bounds);
+            const endPos = getGridPos(endLonLat[0], endLonLat[1], grid, bounds);
+            
+            const w = grid.width;
+            const h = grid.height;
+            const data = grid.data;
+            
+            const openSet = new Set();
+            const openQueue = [];
+            
+            const startKey = startPos.y * w + startPos.x;
+            const endKey = endPos.y * w + endPos.x;
+            
+            if (startKey === endKey) {
+                return [startLonLat, endLonLat];
+            }
+            
+            openSet.add(startKey);
+            openQueue.push({key: startKey, f: 0});
+            
+            const cameFrom = new Map();
+            const gScore = new Map();
+            gScore.set(startKey, 0);
+            
+            function heuristic(aKey, bKey) {
+                const ax = aKey % w; const ay = Math.floor(aKey / w);
+                const bx = bKey % w; const by = Math.floor(bKey / w);
+                const dx = Math.abs(ax - bx);
+                const dy = Math.abs(ay - by);
+                return Math.max(dx, dy) + (Math.sqrt(2) - 1) * Math.min(dx, dy);
+            }
+            
+            let iters = 0;
+            const maxIters = 100000;
+            
+            while(openQueue.length > 0) {
+                if (++iters > maxIters) break;
+                
+                let lowestIndex = 0;
+                let lowestF = openQueue[0].f;
+                for (let i = 1; i < openQueue.length; i++) {
+                    if (openQueue[i].f < lowestF) {
+                        lowestF = openQueue[i].f;
+                        lowestIndex = i;
+                    }
+                }
+                const currentObj = openQueue[lowestIndex];
+                const current = currentObj.key;
+                
+                openQueue[lowestIndex] = openQueue[openQueue.length - 1];
+                openQueue.pop(); 
+                
+                openSet.delete(current);
+                
+                if (current === endKey) {
+                    const path = [current];
+                    let curr = current;
+                    while (cameFrom.has(curr)) {
+                        curr = cameFrom.get(curr);
+                        path.unshift(curr);
+                    }
+                    
+                    return path.map((k, index) => {
+                        if (index === 0) return startLonLat;
+                        if (index === path.length - 1) return endLonLat;
+                        const x = k % w;
+                        const y = Math.floor(k / w);
+                        return getLonLat(x, y, grid, bounds);
+                    });
+                }
+                
+                const cx = current % w;
+                const cy = Math.floor(current / w);
+                const cg = gScore.get(current);
+                
+                const dirs = [
+                    [0, -1, 1], [0, 1, 1], [-1, 0, 1], [1, 0, 1],
+                    [-1, -1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [1, 1, 1.414]
+                ];
+                
+                for (let d of dirs) {
+                    const nx = cx + d[0];
+                    const ny = cy + d[1];
+                    const cost = d[2];
+                    
+                    if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                        const nKey = ny * w + nx;
+                        
+                        const penalty = data[nKey];
+                        
+                        // Avoid hard obstacles
+                        if (penalty === 255 && nKey !== endKey && nKey !== startKey) {
+                            continue;
+                        }
+                        
+                        // Prevent cutting corners through hard walls diagonally
+                        if (d[0] !== 0 && d[1] !== 0) {
+                            if (data[ny * w + cx] === 255 || data[cy * w + nx] === 255) {
+                                continue;
+                            }
+                        }
+                        
+                        // Penalty scales from 0 to 254. 
+                        // We map 254 to a high movement cost (e.g., +15.0).
+                        // This heavily discourages pathing near walls unless absolutely necessary.
+                        const navCost = (penalty / 254.0) * 15.0;
+                        const tentative_g = cg + cost + navCost;
+                        
+                        if (!gScore.has(nKey) || tentative_g < gScore.get(nKey)) {
+                            cameFrom.set(nKey, current);
+                            gScore.set(nKey, tentative_g);
+                            const f = tentative_g + heuristic(nKey, endKey);
+                            
+                            if (!openSet.has(nKey)) {
+                                openSet.add(nKey);
+                                openQueue.push({key: nKey, f: f});
+                            } else {
+                                const openItem = openQueue.find(item => item.key === nKey);
+                                if (openItem && f < openItem.f) {
+                                    openItem.f = f;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return null; // Return null if fallback should be used
         }
 
         function findShortestPathAStar(graph, startId, endId) {

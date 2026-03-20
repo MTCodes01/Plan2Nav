@@ -125,6 +125,7 @@ def process_floors():
             # WALL EXTRACTION
             # ----------------------------------------------------------------
             dummy_path_walls = temp_path.with_suffix('.walls.json')
+            wall_mask = None
             try:
                 wall_mask = processor.preprocess_walls()
                 wall_polygons = detector.detect_wall_polygons_from_lines(wall_mask)
@@ -221,11 +222,51 @@ def process_floors():
             width, height = processor.get_image_dimensions()
             deckgl_bounds = converter.get_deckgl_bounds(width, height, calculated_base_height)
             
+            nav_grid = None
+            if wall_mask is not None:
+                try:
+                    import cv2
+                    import numpy as np
+                    max_dim = 400
+                    scale = min(1.0, max_dim / max(width, height))
+                    new_w = int(width * scale)
+                    new_h = int(height * scale)
+                    # Resize mask
+                    nav_mask = cv2.resize(wall_mask, (new_w, new_h), interpolation=cv2.INTER_AREA)
+                    
+                    # 1. Base hard mask
+                    k = np.ones((3, 3), np.uint8)
+                    nav_mask = cv2.dilate(nav_mask, k, iterations=1)
+                    
+                    # 2. Distance transform for cost map (walls = 0, background = 255)
+                    bg_mask = cv2.bitwise_not(nav_mask)
+                    dist = cv2.distanceTransform(bg_mask, cv2.DIST_L2, 5)
+                    
+                    # Penalty scales down as distance increases up to 20 pixels
+                    max_dist = 20.0
+                    penalty_map = np.clip(max_dist - dist, 0, max_dist)
+                    
+                    # Scale to 0-254 (0 is far, 254 is hugging the wall)
+                    penalty_map = (penalty_map / max_dist * 254).astype(np.uint8)
+                    
+                    # 3. Mark absolute walls as exactly 255
+                    penalty_map[nav_mask > 80] = 255
+                    grid_list = penalty_map.flatten().tolist()
+                    
+                    nav_grid = {
+                        "width": new_w,
+                        "height": new_h,
+                        "data": grid_list
+                    }
+                except Exception as e:
+                    logger.error(f"Navigation grid generation failed: {e}", exc_info=True)
+            
             floors_data.append({
                 "floor_num": floor_num,
                 "imageUrl": f"/uploads/{temp_path.name}",
                 "bounds": deckgl_bounds,
-                "base_height": calculated_base_height
+                "base_height": calculated_base_height,
+                "nav_grid": nav_grid
             })
 
         except Exception as e:
