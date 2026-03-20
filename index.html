@@ -727,7 +727,10 @@
                     getWidth: 1,
                     widthScale: 1,
                     widthMinPixels: 1.5,
-                    parameters: { depthTest: false }
+                    parameters: { depthTest: false },
+                    jointRounded: true,
+                    capRounded: true,
+                    miterLimit: 2
                 }));
             }
 
@@ -1107,9 +1110,13 @@
                 floorSegments.push({ floor: currentFloorNum, nodes: currentSegment });
             }
 
-            for (const segment of floorSegments) {
+            const finalPathCoords = [];
+
+            for (let s = 0; s < floorSegments.length; s++) {
+                const segment = floorSegments[s];
                 const floorData = deckFloors.find(f => f.floor_num === segment.floor);
                 
+                let segmentPath = [];
                 if (floorData && floorData.nav_grid) {
                     const startCentroid = segment.nodes[0].centroid;
                     const endCentroid = segment.nodes[segment.nodes.length - 1].centroid;
@@ -1118,25 +1125,67 @@
                     
                     if (gridPath && gridPath.length > 0) {
                         const z = is3D ? floorData.base_height + 0.2 : 0.1;
-                        // Directly use optimal grid path
                         gridPath.forEach(pt => {
-                            pathCoords.push([pt[0], pt[1], z]);
+                            segmentPath.push([pt[0], pt[1], z]);
                         });
-                        continue; 
                     }
                 }
                 
-                // Fallback to simple centroid sequence if nav_grid fails or path not found
-                for (let i = 0; i < segment.nodes.length; i++) {
-                    const node = segment.nodes[i];
-                    const z = is3D ? node.base_height + 0.2 : 0.1;
-                    pathCoords.push([node.centroid[0], node.centroid[1], z]);
+                if (segmentPath.length === 0) {
+                    for (let i = 0; i < segment.nodes.length; i++) {
+                        const node = segment.nodes[i];
+                        const z = is3D ? node.base_height + 0.2 : 0.1;
+                        segmentPath.push([node.centroid[0], node.centroid[1], z]);
+                    }
+                }
+                
+                // Smooth intra-floor path
+                if (segmentPath.length > 2) {
+                    segmentPath = smoothPath(segmentPath, 3);
+                }
+                
+                segmentPath.forEach(pt => finalPathCoords.push(pt));
+                
+                // If there is a change of floors, inject a smooth 3D transition!
+                if (s < floorSegments.length - 1 && is3D) {
+                    const nextSeg = floorSegments[s + 1];
+                    const nextFloorData = deckFloors.find(f => f.floor_num === nextSeg.floor);
+
+                    const p1 = segmentPath[segmentPath.length - 1]; 
+                    const nextStartLatLon = nextSeg.nodes[0].centroid;
+                    const z2 = nextFloorData ? nextFloorData.base_height + 0.2 : 0.1;
+                    const p2 = [nextStartLatLon[0], nextStartLatLon[1], z2];
+
+                    // Generate the smooth connecting curve
+                    const transitionPts = generateSmoothFloorTransition(p1, p2);
+                    transitionPts.forEach(pt => finalPathCoords.push(pt));
                 }
             }
 
-            window.routePath = smoothPath(pathCoords, 3);
+            window.routePath = finalPathCoords;
             showStatus(`Optimal route calculated!`, 'success');
             renderDeckOverlay(is3D);
+        }
+
+        function generateSmoothFloorTransition(p1, p2, segments = 15) {
+            const coords = [];
+            // We segment the line between the two floors to give the renderer 
+            // plenty of gentle angles rather than sharp corners.
+            for (let i = 1; i <= segments; i++) { 
+                const t = i / segments;
+
+                // Smooth Step (Ease-in-out) formula: 3t^2 - 2t^3
+                // This makes the vertical climb start flat, speed up in the middle, and flatten at the top.
+                const easeT = t * t * (3 - 2 * t); 
+
+                coords.push([
+                    p1[0] + (p2[0] - p1[0]) * t,    // Linear XY interpolation
+                    p1[1] + (p2[1] - p1[1]) * t,
+                    p1[2] + (p2[2] - p1[2]) * easeT // Curved Z interpolation
+                ]);
+            }
+
+            return coords;
         }
 
         function getGridPos(lon, lat, grid, bounds) {
